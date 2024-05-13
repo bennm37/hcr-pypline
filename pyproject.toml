@@ -5,4 +5,11 @@ build-backend = "hatchling.build"
 [project]
 name = "pymorphogen"
 version = "0.1"
-dependcies = ["numpy", "scipy", "matplotlib"]
+dependencies = ["numpy", "scikit-learn", "scipy", "matplotlib", "pandas", "scikit-image"]
+
+
+[project.optional-dependencies]
+test = [
+    "black==21.9b0",
+    "pytest==6.2.5",
+]
