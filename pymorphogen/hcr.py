@@ -1,11 +1,12 @@
-import itk.itkMinimumImageFilterPython
 from matplotlib.widgets import EllipseSelector, RectangleSelector
 import matplotlib.pyplot as plt
+from matplotlib.colors import Normalize
 import numpy as np
 import pandas as pd
+from scipy.ndimage import generate_binary_structure, maximum_filter
 from skimage.feature import peak_local_max
 from skimage.segmentation import watershed, find_boundaries
-from skimage.morphology import label, binary_dilation
+from skimage.morphology import label, binary_dilation, reconstruction
 from skimage.measure import regionprops
 import skimage.filters as filters
 from skimage import graph   
@@ -88,32 +89,83 @@ def get_mean_region(image, high_contrast, name, size=50, vmax=None):
     plt.show()
     return means[-1]
 
+def weight_boundary(graph, src, dst, n):
+    """
+    Handle merging of nodes of a region boundary region adjacency graph.
+
+    This function computes the `"weight"` and the count `"count"`
+    attributes of the edge between `n` and the node formed after
+    merging `src` and `dst`.
+
+
+    Parameters
+    ----------
+    graph : RAG
+        The graph under consideration.
+    src, dst : int
+        The vertices in `graph` to be merged.
+    n : int
+        A neighbor of `src` or `dst` or both.
+
+    Returns
+    -------
+    data : dict
+        A dictionary with the "weight" and "count" attributes to be
+        assigned for the merged node.
+
+    """
+    default = {'weight': 0.0, 'count': 0}
+
+    count_src = graph[src].get(n, default)['count']
+    count_dst = graph[dst].get(n, default)['count']
+
+    weight_src = graph[src].get(n, default)['weight']
+    weight_dst = graph[dst].get(n, default)['weight']
+
+    count = count_src + count_dst
+    return {
+        'count': count,
+        'weight': (count_src * weight_src + count_dst * weight_dst) / count,
+    }
+
+def merge_boundary(graph, src, dst):
+    """Call back called before merging 2 nodes.
+
+    In this case we don't need to do any computation here.
+    """
+    pass
 
 def watershed_segmentation(image, markers, threshold):
-    ws_regions = watershed(-image, markers)
-    # Merge basins with boundary height less than the threshold
-    ws_labels = np.unique(ws_regions)
-    merged = np.zeros_like(ws_regions)
-    edges = np.array(find_boundaries(ws_regions))*255
-    edges = edges.astype(np.uint8)
-    image = (image*255).astype(np.uint8)    
-    rag = graph.rag_boundary(image, edges)
-    rgb_image = np.dstack([image]*3)
-    graph.show_rag(ws_regions, rag, rgb_image)
+    ws_labels = watershed(-image, markers, compactness=0.0001)
+    plt.imshow(ws_labels)
     plt.show()
+    # Merge basins with boundary height less than the threshold
+    edge_map = filters.sobel(image)
+    # edge_map = find_boundaries(ws_labels, mode="inner", connectivity=1)
+    ws_labels = ws_labels.astype(np.uint8)
+    # image = (image*255).astype(np.uint8)    
+    rag = graph.rag_boundary(ws_labels, edge_map.astype(float))
+    rgb_image = np.dstack([image]*3)
+    normalize_image = Normalize(vmin=image.min(), vmax=np.mean(image)*30)
+    rgb_image = plt.get_cmap("afmhot")(normalize_image(image))[:,:,0:3]
+    graph.show_rag(ws_labels, rag, np.dstack([ws_labels]*3), img_cmap="YlOrBr", edge_cmap="coolwarm", edge_width=1.5)
+    plt.show()
+    merged = graph.merge_hierarchical(ws_labels, rag, threshold, rag_copy=True, in_place_merge=True, merge_func=merge_boundary, weight_func=weight_boundary)
+    label(merged)
 
-    regions = regionprops(ws_regions)
-
-    # Relabel the remaining basins
-    ws_regions = label(ws_regions)
-    
-    return ws_regions
+    fig, ax = plt.subplots(2,1, sharex=True, sharey=True)
+    ax[0].imshow(image, cmap="afmhot", vmax=20*np.mean(image))
+    ax[1].imshow(merged)
+    plt.show()
+    return merged
 
 def process(image, high_contrast=None, sigma_blur=1, pixel_intensity_thresh=0.003, watershed_min_saliency=0.15, dot_intensity_thresh=0.05, size=50):
     # Get the mean value of the background
-    mean_background = get_mean_region(image, high_contrast, "Background", size=size, vmax=None)
-    # Get the mean value of the signal + background
-    mean_signal_background = get_mean_region(image, high_contrast, "Signal + Background", size=size, vmax=None)
+    # mean_background = get_mean_region(image, high_contrast, "Background", size=size, vmax=None)
+    # # Get the mean value of the signal + background
+    # mean_signal_background = get_mean_region(image, high_contrast, "Signal + Background", size=size, vmax=None)
+    mean_background = 5.8792
+    mean_signal_background = 8.1856
     # smooth using isotrpoic gaussian blur
     image = ndi.gaussian_filter(image, sigma=sigma_blur)
     normalized_image = (image - mean_background) / (image.max() - mean_background)
@@ -121,10 +173,31 @@ def process(image, high_contrast=None, sigma_blur=1, pixel_intensity_thresh=0.00
     thresholded_image = np.where(normalized_image > pixel_intensity_thresh, normalized_image, 0)
     # renormalize the image
     renormalized_image = (thresholded_image - thresholded_image.min()) / (thresholded_image.max() - thresholded_image.min())
-    # identify image maxima 
-    maxima = peak_local_max(renormalized_image, threshold_abs=dot_intensity_thresh)
-    markers = np.zeros_like(renormalized_image)
-    markers[tuple(maxima.T)] = np.arange(len(maxima)) + 1
+    # calculate hdome
+    seed = np.copy(renormalized_image)
+    seed[1:-1, 1:-1] = renormalized_image.min()
+    mask = renormalized_image
+    # Skimage regional max
+    # dilated = reconstruction(seed, mask, method='dilation')
+    # hdome = renormalized_image - dilated
+    # maxima = peak_local_max(hdome)
+    neighborhood_structure = generate_binary_structure(2, 2)
+    regional_max = maximum_filter(renormalized_image, footprint=neighborhood_structure)==renormalized_image
+    markers = label(regional_max)
+    plt.imshow(renormalized_image, cmap="afmhot", vmax=20*np.mean(renormalized_image))
+    plt.imshow(markers, alpha=0.5)
+    plt.show()
     ws_labels = watershed_segmentation(renormalized_image, markers, watershed_min_saliency)
-    return maxima
+    props = regionprops(ws_labels, intensity_image=renormalized_image)
+    # remove dim objects 
+    ws_labels = np.where(props[0].mean_intensity > dot_intensity_thresh, ws_labels, 0)
+    plt.hist(props[0].mean_intensity, bins=1000, density=True)
+    plt.hist(renormalized_image.flatten(), bins=1000, alpha=0.5, density=True)
+    plt.show()
+    ws_labels = label(ws_labels)
+    fig, ax = plt.subplots(2,1, sharex=True, sharey=True)
+    ax[0].imshow(image, cmap="afmhot", vmax=20*np.mean(image))
+    ax[1].imshow(ws_labels)
+    plt.show()
+    return ws_labels
    
