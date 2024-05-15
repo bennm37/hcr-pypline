@@ -25,7 +25,7 @@ COLOR_CYCLE = [
 
 def create_label_menu(points_layer, labels):
     """Create a label menu widget that can be added to the napari viewer dock
-
+f
     Parameters
     ----------
     points_layer : napari.layers.Points
