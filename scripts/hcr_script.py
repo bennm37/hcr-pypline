@@ -1,4 +1,4 @@
-from pymorphogen.hcr import process
+from pymorphogen.hcr import process_2
 from skimage.io import imread, imsave
 import cv2
 import matplotlib.pyplot as plt
@@ -15,7 +15,7 @@ else:
     normalized = cv2.equalizeHist(image)
 
 # # vmax = 3 * np.mean(image)
-maxima = process(image, high_contrast=normalized, sigma_blur=0.5, pixel_intensity_thresh=0.003, watershed_min_saliency=0.0001, dot_intensity_thresh=0.01, size=50)
+maxima = process_2(image, high_contrast=normalized, sigma_blur=0.5, pixel_intensity_thresh=0.003, fg_width=0.01, background_thresh=0.005, watershed_min_saliency=0.0001, dot_intensity_thresh=0.03, size=50)
 # plt.imshow(image, vmax=10*np.mean(image), cmap="afmhot")
 # plt.scatter(maxima[:, 1], maxima[:, 0], c="r", s=1)
 # plt.show()

@@ -7,13 +7,13 @@ from skimage.graph._rag import _edge_generator_from_csr, RAG
 from skimage import graph   
 from skimage.feature import peak_local_max
 from skimage.segmentation import watershed, find_boundaries
-from skimage.morphology import label, binary_dilation, reconstruction
+from skimage.morphology import label, dilation, reconstruction
 from skimage.measure import regionprops
 import skimage.filters as filters
 from scipy import ndimage as ndi
 from scipy import sparse
 import diplib as dip
-
+import cv2 as cv
 
 # random colormap for labelling the regions
 def random_cmap(n=256, name='random_cmap'):
@@ -256,10 +256,10 @@ def process(image, high_contrast=None, sigma_blur=1, pixel_intensity_thresh=0.00
     # renormalize the image
     renormalized_image = (thresholded_image - thresholded_image.min()) / (thresholded_image.max() - thresholded_image.min())
     # calculate hdome
-    seed = np.copy(renormalized_image)
-    seed[1:-1, 1:-1] = renormalized_image.min()
-    mask = renormalized_image
+    # seed = np.copy(renormalized_image)
+    # seed[1:-1, 1:-1] = renormalized_image.min()
     # SKIMAGE REGIONAL MAX
+    # mask = renormalized_image
     # dilated = reconstruction(seed, mask, method='dilation')
     # hdome = renormalized_image - dilated
     # maxima = peak_local_max(hdome)
@@ -286,3 +286,36 @@ def process(image, high_contrast=None, sigma_blur=1, pixel_intensity_thresh=0.00
     plt.show()
     return ws_labels
    
+def process_2(image, high_contrast=None, sigma_blur=1, pixel_intensity_thresh=0.003, background_thresh=0.01, fg_width=0.2, watershed_min_saliency=0.15, dot_intensity_thresh=0.05, size=50):
+    # Get the mean value of the background
+    # mean_background = get_mean_region(image, high_contrast, "Background", size=size, vmax=None)
+    # # Get the mean value of the signal + background
+    # mean_signal_background = get_mean_region(image, high_contrast, "Signal + Background", size=size, vmax=None)
+    mean_background = 5.8792
+    mean_signal_background = 8.1856
+    image = ndi.gaussian_filter(image, sigma=sigma_blur)
+    normalized_image = (image - mean_background) / (image.max() - mean_background)
+    # threshold the image
+    thresholded_image = np.where(normalized_image > pixel_intensity_thresh, normalized_image, 0)
+    # renormalize the image
+    renormalized_image = (thresholded_image - thresholded_image.min()) / (thresholded_image.max() - thresholded_image.min())
+    thresh = (renormalized_image > dot_intensity_thresh).astype(np.uint8)
+    kernel = np.ones((3,3),np.uint8)
+    sure_bg = cv.dilate(thresh,kernel,iterations=3)
+    dist_transform = cv.distanceTransform(thresh,cv.DIST_L2,5)
+    ret, sure_fg = cv.threshold(dist_transform,fg_width*dist_transform.max(),255,0)
+    sure_fg = np.uint8(sure_fg)
+    plt.imshow(sure_fg)
+    plt.show()
+    unknown = cv.subtract(sure_bg,sure_fg)
+    ret, markers = cv.connectedComponents(sure_fg)
+    markers = markers+1
+    markers[unknown==255] = 0
+    markers = markers.astype(np.int32)
+    rgb_image = np.dstack([image*255]*3).astype(np.uint8)
+    labels = cv.watershed(rgb_image, markers)
+    r_cmap = random_cmap(labels.max())
+    fig, ax = plt.subplots(2,1, sharex=True, sharey=True)
+    ax[0].imshow(image, cmap="afmhot", vmax=20*np.mean(image))
+    ax[1].imshow(labels, cmap=r_cmap)
+    plt.show()
