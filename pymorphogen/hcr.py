@@ -1,17 +1,27 @@
 from matplotlib.widgets import EllipseSelector, RectangleSelector
 import matplotlib.pyplot as plt
-from matplotlib.colors import Normalize
+from matplotlib.colors import Normalize, LinearSegmentedColormap
 import numpy as np
 import pandas as pd
-from scipy.ndimage import generate_binary_structure, maximum_filter
+from skimage.graph._rag import _edge_generator_from_csr, RAG
+from skimage import graph   
 from skimage.feature import peak_local_max
 from skimage.segmentation import watershed, find_boundaries
 from skimage.morphology import label, binary_dilation, reconstruction
 from skimage.measure import regionprops
 import skimage.filters as filters
-from skimage import graph   
 from scipy import ndimage as ndi
+from scipy import sparse
+import diplib as dip
 
+
+# random colormap for labelling the regions
+def random_cmap(n=256, name='random_cmap'):
+    """Create a random colormap for labelling the regions."""
+    np.random.seed(0)
+    colors = np.random.rand(n, 4)
+    cmap = LinearSegmentedColormap.from_list(name, colors, N=n)
+    return cmap
 
 class FixedSizeRectangleSelector(RectangleSelector):
     def __init__(self, ax, onselect, size=50, **kwargs):
@@ -135,16 +145,87 @@ def merge_boundary(graph, src, dst):
     """
     pass
 
+
+def rag_boundary_f(labels, edge_map, f=np.min, connectivity=2):
+    """ Comouter RAG based on region boundaries
+
+    Given an image's initial segmentation and its edge map this method
+    constructs the corresponding Region Adjacency Graph (RAG). Each node in the
+    RAG represents a set of pixels within the image with the same label in
+    `labels`. The weight between two adjacent regions is the average value
+    in `edge_map` along their boundary.
+
+    labels : ndarray
+        The labelled image.
+    edge_map : ndarray
+        This should have the same shape as that of `labels`. For all pixels
+        along the boundary between 2 adjacent regions, the average value of the
+        corresponding pixels in `edge_map` is the edge weight between them.
+    connectivity : int, optional
+        Pixels with a squared distance less than `connectivity` from each other
+        are considered adjacent. It can range from 1 to `labels.ndim`. Its
+        behavior is the same as `connectivity` parameter in
+        `scipy.ndimage.generate_binary_structure`.
+
+    Examples
+    --------
+    >>> from skimage import data, segmentation, filters, color, graph
+    >>> img = data.chelsea()
+    >>> labels = segmentation.slic(img)
+    >>> edge_map = filters.sobel(color.rgb2gray(img))
+    >>> rag = graph.rag_boundary(labels, edge_map)
+
+    """
+
+    conn = ndi.generate_binary_structure(labels.ndim, connectivity)
+    eroded = ndi.grey_erosion(labels, footprint=conn)
+    dilated = ndi.grey_dilation(labels, footprint=conn)
+    boundaries0 = (eroded != labels)
+    boundaries1 = (dilated != labels)
+    labels_small = np.concatenate((eroded[boundaries0], labels[boundaries1]))
+    labels_large = np.concatenate((labels[boundaries0], dilated[boundaries1]))
+    stacked_labels = np.vstack([labels_small, labels_large]) 
+    n = np.max(labels_large) + 1
+    ones = np.broadcast_to(1., labels_small.shape)
+    count_matrix = sparse.coo_matrix((ones, (labels_small, labels_large)),
+                                     dtype=int, shape=(n, n)).tocsr()
+    
+    unique_labels = np.unique(stacked_labels, axis=1)
+    data = np.concatenate((edge_map[boundaries0], edge_map[boundaries1]))
+    unique_data = np.zeros(unique_labels.shape[1])
+    for i, label in enumerate(unique_labels.T):
+        inds = np.where(np.all(stacked_labels == label[:, None], axis=0))[0]
+        unique_data[i] = f(data[inds])
+
+    data_coo = sparse.coo_matrix((unique_data, (unique_labels[0], unique_labels[1])))
+    graph_matrix = data_coo.tocsr()
+
+    rag = RAG()
+    rag.add_weighted_edges_from(_edge_generator_from_csr(graph_matrix),
+                                weight='weight')
+    rag.add_weighted_edges_from(_edge_generator_from_csr(count_matrix),
+                                weight='count')
+
+    for n in rag.nodes():
+        rag.nodes[n].update({'labels': [n]})
+
+    return rag
+
 def watershed_segmentation(image, markers, threshold):
-    ws_labels = watershed(-image, markers, compactness=0.0001)
-    plt.imshow(ws_labels)
+    ws_labels = watershed(-image, markers)
+    r_cmap = random_cmap(ws_labels.max())
+    fig, ax = plt.subplots(2,1, sharex=True, sharey=True)
+    fig.suptitle="Watershed Segmentation"
+    ax[0].imshow(image, cmap="afmhot", vmax=20*np.mean(image))
+    ax[1].imshow(ws_labels, cmap=r_cmap)
     plt.show()
     # Merge basins with boundary height less than the threshold
-    edge_map = filters.sobel(image)
-    # edge_map = find_boundaries(ws_labels, mode="inner", connectivity=1)
-    ws_labels = ws_labels.astype(np.uint8)
-    # image = (image*255).astype(np.uint8)    
-    rag = graph.rag_boundary(ws_labels, edge_map.astype(float))
+    # edge_map = filters.sobel(image)
+    edge_map = image
+    boundaries = find_boundaries(ws_labels, connectivity=2)
+
+    # image = (image*255).astype(np.uint8)  
+    rag = rag_boundary_f(ws_labels, edge_map, connectivity=1)
     rgb_image = np.dstack([image]*3)
     normalize_image = Normalize(vmin=image.min(), vmax=np.mean(image)*30)
     rgb_image = plt.get_cmap("afmhot")(normalize_image(image))[:,:,0:3]
@@ -154,8 +235,9 @@ def watershed_segmentation(image, markers, threshold):
     label(merged)
 
     fig, ax = plt.subplots(2,1, sharex=True, sharey=True)
+    fig.suptitle="Merged Segmentation"
     ax[0].imshow(image, cmap="afmhot", vmax=20*np.mean(image))
-    ax[1].imshow(merged)
+    ax[1].imshow(merged, cmap=r_cmap)
     plt.show()
     return merged
 
@@ -177,12 +259,14 @@ def process(image, high_contrast=None, sigma_blur=1, pixel_intensity_thresh=0.00
     seed = np.copy(renormalized_image)
     seed[1:-1, 1:-1] = renormalized_image.min()
     mask = renormalized_image
-    # Skimage regional max
+    # SKIMAGE REGIONAL MAX
     # dilated = reconstruction(seed, mask, method='dilation')
     # hdome = renormalized_image - dilated
     # maxima = peak_local_max(hdome)
-    neighborhood_structure = generate_binary_structure(2, 2)
-    regional_max = maximum_filter(renormalized_image, footprint=neighborhood_structure)==renormalized_image
+    # SCIPY REGIONAL MAX
+    # neighborhood_structure = generate_binary_structure(2, 2)
+    # regional_max = maximum_filter(renormalized_image, footprint=neighborhood_structure)==renormalized_image
+    regional_max = np.array(dip.Maxima(renormalized_image))
     markers = label(regional_max)
     plt.imshow(renormalized_image, cmap="afmhot", vmax=20*np.mean(renormalized_image))
     plt.imshow(markers, alpha=0.5)
@@ -195,9 +279,10 @@ def process(image, high_contrast=None, sigma_blur=1, pixel_intensity_thresh=0.00
     plt.hist(renormalized_image.flatten(), bins=1000, alpha=0.5, density=True)
     plt.show()
     ws_labels = label(ws_labels)
+    r_cmap = random_cmap(ws_labels.max())
     fig, ax = plt.subplots(2,1, sharex=True, sharey=True)
     ax[0].imshow(image, cmap="afmhot", vmax=20*np.mean(image))
-    ax[1].imshow(ws_labels)
+    ax[1].imshow(ws_labels, cmap=r_cmap)
     plt.show()
     return ws_labels
    
