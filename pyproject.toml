@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "pymorphogen"
+name = "hcrp"
 version = "0.1"
-dependencies = ["numpy", "scikit-learn", "scipy", "matplotlib", "pandas", "scikit-image"]
+dependencies = ["numpy", "scikit-learn",  "scikit-image", "scipy", "matplotlib", "pandas", "shapely", "opencv-python"]
 
 
 [project.optional-dependencies]
