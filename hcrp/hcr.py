@@ -6,6 +6,7 @@ from scipy import ndimage as ndi
 import cv2 as cv
 from hcrp.labelling import get_mean_region
 
+
 # random colormap for labelling the regions
 def random_cmap(n=256, name="random_cmap"):
     """Create a random colormap for labelling the regions."""
@@ -13,6 +14,7 @@ def random_cmap(n=256, name="random_cmap"):
     colors = np.random.rand(n, 4)
     cmap = LinearSegmentedColormap.from_list(name, colors, N=n)
     return cmap
+
 
 def quantify_hcr(
     image,
@@ -25,9 +27,13 @@ def quantify_hcr(
     verbose=False,
 ):
     # Get the mean value of the background
-    mean_background = get_mean_region(image, high_contrast, "Background", size=size, vmax=None)
+    mean_background = get_mean_region(
+        image, high_contrast, "Background", size=size, vmax=None
+    )
     # # Get the mean value of the signal + background
-    mean_signal_background = get_mean_region(image, high_contrast, "Signal + Background", size=size, vmax=None)
+    mean_signal_background = get_mean_region(
+        image, high_contrast, "Signal + Background", size=size, vmax=None
+    )
     # mean_background = 5.8792
     # mean_signal_background = 8.1856
     image = ndi.gaussian_filter(image, sigma=sigma_blur)
@@ -47,7 +53,7 @@ def quantify_hcr(
     if verbose:
         plt.imshow(dist_transform)
         plt.show()
-    erode = cv.erode(thresh, np.ones((2,2)), iterations=1)
+    erode = cv.erode(thresh, np.ones((2, 2)), iterations=1)
     ret, sure_fg = cv.threshold(dist_transform, fg_width * dist_transform.max(), 255, 0)
     sure_fg = np.uint8(sure_fg)
     unknown = cv.subtract(sure_bg, sure_fg)
