@@ -43,13 +43,14 @@ class FixedSizeRectangleSelector(RectangleSelector):
         self.extents = x0, x1, y0, y1
 
 
-def get_spline(image, name):
+def get_spline(image, name, window_name=None):
     """Manually Select ROI Spline Points From Image."""
     image_with_roi = image.copy()
     img8bit = (image_with_roi / 256).astype(np.uint8)
     image_with_roi_equalized = cv2.equalizeHist(img8bit)
     roi_points = []
-
+    if window_name is None:
+        window_name = f"Manually input Spline for {name}"
     def mouse_callback(event, x, y, flags, param):
         if event == cv2.EVENT_LBUTTONDOWN:
             roi_points.append((x, y))
@@ -62,11 +63,11 @@ def get_spline(image, name):
                     (0, 0, 255),
                     2,
                 )
-            cv2.imshow("Select ROI", image_with_roi_equalized)
+            cv2.imshow(window_name, image_with_roi_equalized)
 
-    cv2.namedWindow("Select ROI", cv2.WINDOW_NORMAL)
-    cv2.imshow("Select ROI", image_with_roi_equalized)
-    cv2.setMouseCallback("Select ROI", mouse_callback)
+    cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+    cv2.imshow(window_name, image_with_roi_equalized)
+    cv2.setMouseCallback(window_name, mouse_callback)
     while True:
         key = cv2.waitKey(1) & 0xFF
         if key == ord("q"):
@@ -74,13 +75,13 @@ def get_spline(image, name):
     cv2.destroyAllWindows()
     csv_filename = f"data/{name}.csv"
     np.savetxt(csv_filename, roi_points, delimiter=",", fmt="%d")
-    print(f"ROI points saved to {csv_filename}.")
+    print(f"Spline points saved to {csv_filename}.")
     return roi_points
 
 
 def get_contour(image, name):
     """Manually Select ROI Spline Points for External Contour From Image."""
-    roi_points = get_spline(image, name)
+    roi_points = get_spline(image, name, window_name=f"Manually input Contour for {name}")
     return roi_points
 
 
