@@ -10,3 +10,10 @@ Activate the cellpose environment. \
 ```conda activate cellpose-env```\
 Install the hcrp package and dependencies \
 ```pip install -e .```
+
+<!-- 
+# Setup 
+Create a file in data called image location.\
+```data/image_location```\
+hcrp will then use to look for images.
+   -->

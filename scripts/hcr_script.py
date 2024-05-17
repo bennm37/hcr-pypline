@@ -6,17 +6,17 @@ import numpy as np
 
 
 if __name__ == "__main__":
-    read_stack = False
+    read_stack = True
     if read_stack:
         stack = imread("data/TdEmbryo_Hoechst_pMad488_dpp546_brk647_20240506_LimbExtension10-Ant.tif")
-        image = stack[26, :, :,]
+        image = stack[26, :, :, 3]
         # write the image
         imsave("data/seperated.tif", image) 
     else:
         image = imread("data/seperated.tif")
-        image = (image//256).astype(np.uint8)
-        normalized = cv2.equalizeHist(image)
-    labels, props = quantify_hcr(image, high_contrast=normalized, sigma_blur=0.2, pixel_intensity_thresh=0.000, fg_width=0.05, dot_intensity_thresh=0.1, size=50)
+    image = (image//256).astype(np.uint8)
+    normalized = cv2.equalizeHist(image)
+    labels, props = quantify_hcr(image, high_contrast=normalized, sigma_blur=0.2, fg_width=0.05, dot_intensity_thresh=0.1, size=50)
     centroids = np.array([prop.centroid for prop in props])
     intensities = np.array([prop.mean_intensity for prop in props])
     n_centroids = centroids.shape[0]

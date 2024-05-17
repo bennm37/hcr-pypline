@@ -158,8 +158,9 @@ cython_debug/
 launch.json
 
 # personal
-data/
+data/*
 itk_venv/
+image_location/
 
 
 # PyCharm
