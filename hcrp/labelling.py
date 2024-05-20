@@ -11,6 +11,7 @@ import os
 import datetime
 import pandas as pd
 
+
 class FixedSizeRectangleSelector(RectangleSelector):
     def __init__(self, ax, onselect, size=50, **kwargs):
         super().__init__(ax, onselect, **kwargs)
@@ -45,14 +46,14 @@ class FixedSizeRectangleSelector(RectangleSelector):
         self.extents = x0, x1, y0, y1
 
 
-def get_spline(image, name, window_name=None):
-    """Manually Select ROI Spline Points From Image."""
+def get_midline(image, name, window_name=None):
+    """Manually Select ROI midline Points From Image."""
     image_with_roi = image.copy()
     img8bit = (image_with_roi / 256).astype(np.uint8)
     image_with_roi_equalized = cv2.equalizeHist(img8bit)
     roi_points = []
     if window_name is None:
-        window_name = f"Manually input Spline for {name}"
+        window_name = f"Manually input midline for {name}"
 
     def mouse_callback(event, x, y, flags, param):
         if event == cv2.EVENT_LBUTTONDOWN:
@@ -80,8 +81,8 @@ def get_spline(image, name, window_name=None):
 
 
 def get_contour(image, name):
-    """Manually Select ROI Spline Points for External Contour From Image."""
-    roi_points = get_spline(
+    """Manually Select ROI midline Points for External Contour From Image."""
+    roi_points = get_midline(
         image, name, window_name=f"Manually input Contour for {name}"
     )
     return roi_points
@@ -140,7 +141,14 @@ def get_mean_region(image, high_contrast, name, size=50, vmax=None):
         print("No region selected.")
         return get_mean_region(image, high_contrast, name, size, vmax)
 
-def label(stack_path, out="data", mid_frac=0.5, channel_names=["brk", "dpp", "pMad", "nuclear"], size=50):
+
+def label(
+    stack_path,
+    out="data",
+    mid_frac=0.5,
+    channel_names=["brk", "dpp", "pmad", "nuclear"],
+    size=50,
+):
     """Label a single image."""
     assert channel_names[-1] == "nuclear", "The last channel must be nuclear."
     stack = imread(f"{stack_path}.tif")
@@ -154,12 +162,12 @@ def label(stack_path, out="data", mid_frac=0.5, channel_names=["brk", "dpp", "pM
     contour_df["z"] = mid_layer
     contour_df.to_csv(contour_out, index=False)
     print(f"Contour points saved to {contour_out}.")
-    spline = get_spline(nuclear, nuclear)
-    spline_out = f"{out}/{name}_spline.csv"
-    spline_df = pd.DataFrame(spline, columns=["x", "y"])
-    spline_df["z"] = mid_layer
-    spline_df.to_csv(spline_out, index=False)
-    print(f"Spline points saved to {out}/{name}_spline.csv.")
+    midline = get_midline(nuclear, nuclear)
+    midline_out = f"{out}/{name}_midline.csv"
+    midline_df = pd.DataFrame(midline, columns=["x", "y"])
+    midline_df["z"] = mid_layer
+    midline_df.to_csv(midline_out, index=False)
+    print(f"midline points saved to {out}/{name}_midline.csv.")
     background_out = f"{out}/{name}_background.csv"
     signal_background_out = f"{out}/{name}_signal_background.csv"
     columns = ["mean_intensity", "window_length", "x", "y", "z"]
@@ -169,21 +177,41 @@ def label(stack_path, out="data", mid_frac=0.5, channel_names=["brk", "dpp", "pM
         channel = stack[mid_layer, :, :, j]
         normalized_channel = (channel // 256).astype(np.uint8)
         normalized_channel = cv2.equalizeHist(normalized_channel)
-        background, background_center = get_mean_region(channel, normalized_channel, f"{name} Background {channel_name}", size=size)
-        signal_background, signal_background_center = get_mean_region(channel, normalized_channel, f"{name} Signal + Background {channel_name}", size=size)
-        background_df.loc[channel_name] = [background, *background_center, mid_layer, size]
-        signal_background_df.loc[channel_name] = [signal_background, *signal_background_center, mid_layer, size]
+        background, background_center = get_mean_region(
+            channel, normalized_channel, f"{name} Background {channel_name}", size=size
+        )
+        signal_background, signal_background_center = get_mean_region(
+            channel,
+            normalized_channel,
+            f"{name} Signal + Background {channel_name}",
+            size=size,
+        )
+        background_df.loc[channel_name] = [
+            background,
+            size,
+            *background_center,
+            mid_layer,
+        ]
+        signal_background_df.loc[channel_name] = [
+            signal_background,
+            size,
+            *signal_background_center,
+            mid_layer,
+        ]
     background_df.to_csv(background_out, index=True)
     print(f"Backgound data saved to {background_out}.")
     signal_background_df.to_csv(signal_background_out, index=True)
     print(f"Signal + Background data saved to {signal_background_out}.")
     print(f"Finished labelling {stack_path}.")
 
+
 def label_folder(folder, mid_frac=0.5, channel_names=["brk", "dpp", "pMad", "nuclear"]):
     """Label all images in the folder."""
     assert os.path.exists(folder), f"{folder} does not exist."
     assert channel_names[-1] == "nuclear", "The last channel must be nuclear."
-    stack_names = [name.split(".")[0] for name in os.listdir(folder) if name.endswith(".tif")]
+    stack_names = [
+        name.split(".")[0] for name in os.listdir(folder) if name.endswith(".tif")
+    ]
     current = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
     data_out = f"data/{folder.split('/')[-1]}_{current}"
     os.makedirs(data_out, exist_ok=True)

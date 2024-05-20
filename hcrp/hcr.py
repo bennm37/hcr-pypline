@@ -18,31 +18,18 @@ def random_cmap(n=256, name="random_cmap"):
 
 def quantify_hcr(
     image,
-    high_contrast=None,
+    mean_background,
     sigma_blur=1,
     pixel_intensity_thresh=0.000,
     fg_width=0.2,
     dot_intensity_thresh=0.05,
-    size=50,
     verbose=False,
 ):
-    # Get the mean value of the background
-    mean_background = get_mean_region(
-        image, high_contrast, "Background", size=size, vmax=None
-    )
-    # # Get the mean value of the signal + background
-    mean_signal_background = get_mean_region(
-        image, high_contrast, "Signal + Background", size=size, vmax=None
-    )
-    # mean_background = 5.8792
-    # mean_signal_background = 8.1856
     image = ndi.gaussian_filter(image, sigma=sigma_blur)
     normalized_image = (image - mean_background) / (image.max() - mean_background)
-    # threshold the image
     thresholded_image = np.where(
         normalized_image > pixel_intensity_thresh, normalized_image, 0
     )
-    # renormalize the image
     renormalized_image = (thresholded_image - thresholded_image.min()) / (
         thresholded_image.max() - thresholded_image.min()
     )
