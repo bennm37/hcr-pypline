@@ -77,6 +77,9 @@ def get_midline(image, name, window_name=None):
         if key == ord("q"):
             break
     cv2.destroyAllWindows()
+    # change from image coords to spatial coords
+    roi_points = np.array(roi_points)
+    roi_points[:, [0, 1]] = roi_points[:, [1, 0]]
     return roi_points
 
 

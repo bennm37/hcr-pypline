@@ -9,6 +9,8 @@ from scipy.interpolate import splprep, splev
 from scipy.spatial.distance import euclidean
 from hcrp import quantify_hcr
 import pandas as pd
+from collections import OrderedDict
+import cv2
 
 
 def get_random_cmap(n_colors):
@@ -39,7 +41,8 @@ def segment(
     stack_path,
     label_location,
     data_out=None,
-    channel_names={"brk":"hcr", "dpp":"hcr", "pmad":"staining", "nuclear":"nuclear"},
+    channel_names=["brk","dpp","pmad","nuclear"],
+    channel_types=["hcr","hcr","staining","nuclear"],
     hcr_params={
         "sigma_blur": 1,
         "pixel_intensity_thresh": 0.0,
@@ -60,22 +63,33 @@ def segment(
     z = midline_data["z"].iloc[0]
     midline = np.array(midline_data[["x", "y"]])
     contour = np.array(pd.read_csv(f"{label_location}/{name}_contour.csv")[["x", "y"]])
-    background = pd.read_csv(f"{label_location}/{name}_background.csv")["mean_intensity"]
-    signal_background = pd.read_csv(f"{label_location}/{name}_signal_background.csv")[
+    background = pd.read_csv(f"{label_location}/{name}_background.csv", index_col=0)["mean_intensity"]
+    signal_background = pd.read_csv(f"{label_location}/{name}_signal_background.csv", index_col=0)[
         "mean_intensity"
     ]
     image = stack[z, :, :, -1]
     masks, props = get_cells(image, diameter=diameter)
-    centroids = [prop.centroid for prop in props]
+    centroids = np.array([prop.centroid for prop in props])
     internal_cell_indices = get_inernal_indices(centroids, contour)
-    for i, cname in enumerate(channel_names[:-1]):
+    for i, (cname, ctype) in enumerate(zip(channel_names[:-1], channel_types[:-1])):
         channel = stack[z, :, :, i]
-        hits = quantify_hcr(channel, background.loc[cname], **hcr_params)
-        internal_hit_indices = get_inernal_indices(hits, contour)
-        plt.imshow(channel)
-        plt.scatter(*zip(*centroids), c="r")
-        plt.scatter(*zip(*[centroids[i] for i in internal_cell_indices]), c="g")
-        plt.scatter(*zip(*hits), c="b")
-        plt.scatter(*zip(*[hits[i] for i in internal_hit_indices]), c="y")
-        plt.show()
+        # normalize channel
+
+        channel_8bit = (channel / 2**16 * 255).astype(np.uint8)
+        normalized_channel = cv2.equalizeHist(channel_8bit)
+        if ctype == "hcr":
+            mask, hcr_props = quantify_hcr(channel, background.loc[cname], **hcr_params)
+            hcr_centroids = np.array([prop.centroid for prop in hcr_props])
+            internal_hit_indices = get_inernal_indices(hcr_centroids, contour)
+            plt.imshow(normalized_channel, cmap="afmhot", vmax=300)
+            plt.scatter(centroids[:,1], centroids[:,0], c="r")
+            plt.scatter(centroids[internal_cell_indices, 1], centroids[internal_cell_indices, 0], c="g")
+            plt.scatter(hcr_centroids[:,1], hcr_centroids[:,0], c="b")
+            plt.scatter(hcr_centroids[internal_hit_indices, 1], hcr_centroids[internal_hit_indices, 0], c="y")
+            plt.plot(contour[:, 1], contour[:, 0], c="r")
+            plt.show()
+        else:
+            internal_cell_masks = [masks==i for i in internal_cell_indices]
+            pmad_intensities = [np.mean(channel[mask]) for mask in internal_cell_masks]
+            
     return masks

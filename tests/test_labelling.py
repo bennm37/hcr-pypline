@@ -4,7 +4,7 @@ from skimage.io import imread
 
 # dropbox_root = "/Users/huanga/The Francis Crick Dropbox/VincentJ/Anqi/Intership/AI_segmentation/python_segmentation/"
 dropbox_root = (
-    "/Users/nicholb/Dropbox/Anqi/Intership/AI_segmentation/python_segmentation"
+    "/Users/nicholb/Dropbox/Anqi/Intership/AqI_segmentation/python_segmentation"
 )
 filename = "TdEmbryo_Hoechst_pMad488_dpp546_brk647_20240506_LimbExtension10-Ant"
 
@@ -35,7 +35,7 @@ def test_get_mean_region():
 
 def test_label():
     stack_path = "data/TdEmbryo_Hoechst_pMad488_dpp546_brk647_20240506_LimbExtension10-Ant"
-    label(stack_path)
+    label(stack_path, out="data/example")
 
 if __name__ == "__main__":
     # test_get_midline()

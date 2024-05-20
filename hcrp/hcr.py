@@ -54,9 +54,10 @@ def quantify_hcr(
     rgb_image = np.dstack([image * 255] * 3).astype(np.uint8)
     labels = cv.watershed(rgb_image, markers)
     r_cmap = random_cmap(labels.max())
-    fig, ax = plt.subplots(2, 1, sharex=True, sharey=True)
-    ax[0].imshow(image, cmap="afmhot", vmax=20 * np.mean(image))
-    ax[1].imshow(labels, cmap=r_cmap)
-    plt.show()
+    if verbose:
+        fig, ax = plt.subplots(2, 1, sharex=True, sharey=True)
+        ax[0].imshow(image, cmap="afmhot", vmax=20 * np.mean(image))
+        ax[1].imshow(labels, cmap=r_cmap)
+        plt.show()
     props = regionprops(labels, intensity_image=renormalized_image)
     return labels, props
