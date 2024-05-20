@@ -1,3 +1,4 @@
+from cellpose.models import Cellpose
 import matplotlib.pyplot as plt
 from matplotlib.colors import Normalize, LinearSegmentedColormap
 import numpy as np
@@ -25,8 +26,8 @@ def quantify_hcr(
     dot_intensity_thresh=0.05,
     verbose=False,
 ):
-    image = ndi.gaussian_filter(image, sigma=sigma_blur)
-    normalized_image = (image - mean_background) / (image.max() - mean_background)
+    blurred = ndi.gaussian_filter(image, sigma=sigma_blur)
+    normalized_image = (blurred - mean_background) / (blurred.max() - mean_background)
     thresholded_image = np.where(
         normalized_image > pixel_intensity_thresh, normalized_image, 0
     )
@@ -38,7 +39,9 @@ def quantify_hcr(
     sure_bg = cv.dilate(thresh, kernel, iterations=10)
     dist_transform = cv.distanceTransform(thresh, cv.DIST_L2, 5)
     if verbose:
-        plt.imshow(dist_transform)
+        fig, ax = plt.subplots(2, 1, sharex=True, sharey=True)
+        ax[0].imshow(image, cmap="afmhot", vmax=np.mean(image)+3*np.std(image))
+        ax[1].imshow(dist_transform, cmap="afmhot", vmax=dist_transform.max())
         plt.show()
     erode = cv.erode(thresh, np.ones((2, 2)), iterations=1)
     ret, sure_fg = cv.threshold(dist_transform, fg_width * dist_transform.max(), 255, 0)
@@ -61,3 +64,9 @@ def quantify_hcr(
         plt.show()
     props = regionprops(labels, intensity_image=renormalized_image)
     return labels, props
+
+def cellpose_hcr(image, diameter=3):
+    model = Cellpose(gpu=True, model_type="cyto")
+    masks, flows, styles, diams = model.eval(image, diameter=diameter, channels=[0, 0])
+    props = regionprops(masks)
+    return masks, props
