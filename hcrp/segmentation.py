@@ -67,6 +67,7 @@ def segment(
     channel_types=["hcr", "hcr", "staining", "nuclear"],
     hcr_params=None,
     diameter=30,
+    verbose=False,
 ):
     """This function takes in the path to a stack of images and the location of the midline, contour and background labels for the stack
     and returns a pandas dataframe with the location of the segmented cells and the mean intensity or count of the number of mrnas in each cell.
@@ -85,19 +86,7 @@ def segment(
         for cname, ctype in zip(channel_names[:-1], channel_types[:-1])
     ]
     data = pd.DataFrame(columns=columns)
-    midline_data = pd.read_csv(f"{label_location}/{name}_midline.csv")
-    z = midline_data["z"].iloc[0]
-
-    # loading labels
-    midline = np.array(midline_data[["x", "y"]])
-    contour = np.array(pd.read_csv(f"{label_location}/{name}_contour.csv")[["x", "y"]])
-    background = pd.read_csv(f"{label_location}/{name}_background.csv", index_col=0)[
-        "mean_intensity"
-    ]
-    signal_background = pd.read_csv(
-        f"{label_location}/{name}_signal_background.csv", index_col=0
-    )["mean_intensity"]
-
+    midline, contour, background, z = load_labels(label_location, name)
     image = stack[z, :, :, -1]
     spline_points, spline_dist = get_spline_points(midline, contour)
     masks, props = get_cells(image, diameter=diameter)
@@ -108,22 +97,24 @@ def segment(
     distal_index = np.argmin(spline_dist[cell_spline_indices])
     spline_dist = spline_dist - spline_dist[distal_index]
     internal_cell_indices = get_internal_indices(centroids, contour)
-    internal_masks = np.where(np.in1d(masks, internal_cell_indices).reshape(masks.shape), masks,0)
+    internal_masks = np.where(
+        np.in1d(masks, internal_cell_indices).reshape(masks.shape), masks, 0
+    )
     cell_closest_spline_indices = np.argmin(
         cdist(centroids[internal_cell_indices], spline_points), axis=1
     )
     cell_spline_dist = spline_dist[cell_closest_spline_indices]
-    r_cmap = get_random_cmap(len(props))
-    labels = [prop.label for prop in props]
-    # plt.imshow(image, cmap="afmhot")
-    # plt.imshow(masks, alpha=0.8, cmap=r_cmap, vmin=0, vmax=len(props))
-    # norm = Normalize(vmin=0, vmax=len(props))
-    # plt.scatter(centroids[:, 1], centroids[:, 0], c=r_cmap(norm(labels)))
-    # plt.show()
+    r_cmap = get_random_cmap(n_cells)
     data["spline_dist"] = cell_spline_dist
     data["x"] = centroids[internal_cell_indices, 0]
     data["y"] = centroids[internal_cell_indices, 1]
     data["z"] = z
+    if verbose:
+        plt.imshow(image, cmap="afmhot")
+        plt.imshow(masks, alpha=0.8, cmap=r_cmap, vmin=0, vmax=n_cells)
+        norm = Normalize(vmin=0, vmax=n_cells)
+        plt.scatter(centroids[:, 1], centroids[:, 0], c=r_cmap(norm(labels)))
+        plt.show()
     for i, (cname, ctype) in enumerate(zip(channel_names[:-1], channel_types[:-1])):
         channel = stack[z, :, :, i]
         channel_8bit = (channel / channel.max() * 255).astype(np.uint8)
@@ -132,14 +123,19 @@ def segment(
             mask, hcr_centroids = quantify_hcr(
                 channel, background.loc[cname], **hcr_params[i]
             )
-            # mask, hcr_props = cellpose_hcr(channel_8bit, diameter=5)
-            # hcr_centroids = np.array([prop.centroid for prop in hcr_props])
             internal_hit_indices = get_internal_indices(hcr_centroids, contour)
-            if hcr_params[i]["verbose"]:
+            distances_to_cells = cdist(
+                hcr_centroids[internal_hit_indices], centroids[internal_cell_indices]
+            )
+            hcr_closest_cell_indices = np.argmin(distances_to_cells, axis=1)
+            hcr_counts = np.bincount(
+                hcr_closest_cell_indices, minlength=len(internal_cell_indices)
+            )
+            if verbose:
+                # show spline and centroids
                 plt.imshow(
                     channel, cmap="afmhot", vmax=np.mean(channel) + 3 * np.std(channel)
                 )
-                # plt.imshow(normalized_channel, cmap="afmhot")
                 plt.scatter(centroids[:, 1], centroids[:, 0], c="r")
                 plt.scatter(
                     centroids[internal_cell_indices, 1],
@@ -153,31 +149,62 @@ def segment(
                 )
                 plt.plot(spline_points[:, 1], spline_points[:, 0], c="b")
                 plt.show()
-            distances_to_cells = cdist(
-                hcr_centroids[internal_hit_indices], centroids[internal_cell_indices]
-            )
-            hcr_closest_cell_indices = np.argmin(distances_to_cells, axis=1)
-            hcr_counts = np.bincount(hcr_closest_cell_indices, minlength=len(internal_cell_indices))
-            plt.imshow(channel, cmap="afmhot")  
-            plt.scatter(centroids[internal_cell_indices, 1], centroids[internal_cell_indices, 0], c=hcr_counts)
-            plt.imshow(internal_masks, cmap=get_random_cmap(len(internal_cell_indices)), alpha=0.3)
-            plt.show()
+                # show hcr centroids and counts
+                plt.imshow(channel, cmap="afmhot")
+                plt.scatter(
+                    centroids[internal_cell_indices, 1],
+                    centroids[internal_cell_indices, 0],
+                    c=hcr_counts,
+                )
+                plt.imshow(
+                    internal_masks,
+                    cmap=get_random_cmap(len(internal_cell_indices)),
+                    alpha=0.3,
+                )
+                plt.show()
             data[f"{cname}_count"] = hcr_counts
         else:
-            staining_intensities = np.array([np.mean(channel[masks==i]) for i in labels])
+            staining_intensities = np.array(
+                [np.mean(channel[masks == i]) for i in labels]
+            )
             internal_staining_intensities = staining_intensities[internal_cell_indices]
+            if verbose:
+                plt.imshow(channel, cmap="afmhot")
+                plt.scatter(
+                    centroids[internal_cell_indices, 1],
+                    centroids[internal_cell_indices, 0],
+                    c=staining_intensities,
+                )
+                plt.imshow(
+                    internal_masks,
+                    cmap=get_random_cmap(len(internal_cell_indices)),
+                    alpha=0.3,
+                )
+                plt.show()
             data[f"{cname}_mean_intensity"] = internal_staining_intensities
     return masks, data
 
+
+def load_labels(label_location, name, midline_data):
+    midline_data = pd.read_csv(f"{label_location}/{name}_midline.csv")
+    z = midline_data["z"].iloc[0]
+    midline = np.array(midline_data[["x", "y"]])
+    contour = np.array(pd.read_csv(f"{label_location}/{name}_contour.csv")[["x", "y"]])
+    background = pd.read_csv(f"{label_location}/{name}_background.csv", index_col=0)[
+        "mean_intensity"
+    ]
+    return midline, contour, background, z
+
+
 def aggregate(x, y, bin_size):
     bins = np.arange(np.min(x), np.max(x), bin_size)
-    bin_centers = (bins[:-1] + bins[1:])/2
+    bin_centers = (bins[:-1] + bins[1:]) / 2
     n_bins = len(bins)
-    y_binned = np.zeros(n_bins-1)
-    y_err_binned = np.zeros(n_bins-1)
+    y_binned = np.zeros(n_bins - 1)
+    y_err_binned = np.zeros(n_bins - 1)
     for i in range(1, n_bins):
-        indices = np.where(np.logical_and(x>bins[i-1],x<bins[i]))[0]
+        indices = np.where(np.logical_and(x > bins[i - 1], x < bins[i]))[0]
         y_in_bin = [y[j] for j in indices]
-        y_binned[i-1] = np.mean(y_in_bin)
-        y_err_binned[i-1] = np.std(y_in_bin)
+        y_binned[i - 1] = np.mean(y_in_bin)
+        y_err_binned[i - 1] = np.std(y_in_bin)
     return bin_centers, y_binned, y_err_binned
