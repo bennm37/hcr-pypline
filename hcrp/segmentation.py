@@ -81,12 +81,14 @@ def segment(
     stack = imread(f"{stack_path}.tif")
     name = stack_path.split("/")[-1].split(".")[0]
     columns = ["spline_dist", "x", "y", "z"] + [
-        f"{name}_count" if type == "hcr" else f"{name}_mean_intensity"
-        for name, type in zip(channel_names[:-1], channel_types[:-1])
+        f"{cname}_count" if ctype == "hcr" else f"{cname}_mean_intensity"
+        for cname, ctype in zip(channel_names[:-1], channel_types[:-1])
     ]
     data = pd.DataFrame(columns=columns)
     midline_data = pd.read_csv(f"{label_location}/{name}_midline.csv")
     z = midline_data["z"].iloc[0]
+
+    # loading labels
     midline = np.array(midline_data[["x", "y"]])
     contour = np.array(pd.read_csv(f"{label_location}/{name}_contour.csv")[["x", "y"]])
     background = pd.read_csv(f"{label_location}/{name}_background.csv", index_col=0)[
@@ -95,6 +97,7 @@ def segment(
     signal_background = pd.read_csv(
         f"{label_location}/{name}_signal_background.csv", index_col=0
     )["mean_intensity"]
+
     spline_points, spline_dist = get_spline_points(midline, contour)
     image = stack[z, :, :, -1]
     masks, props = get_cells(image, diameter=diameter)
@@ -145,12 +148,24 @@ def segment(
             )
             hcr_closest_cell_indices = np.argmin(distances_to_cells, axis=1)
             hcr_counts = np.bincount(hcr_closest_cell_indices, minlength=len(internal_cell_indices))
-            data[f"{name}_count"] = hcr_counts
+            data[f"{cname}_count"] = hcr_counts
         else:
             internal_cell_masks = [masks == i for i in internal_cell_indices]
             staining_intensities = [
                 np.mean(channel[mask]) for mask in internal_cell_masks
             ]
-            data[f"{name}_mean_intensity"] = staining_intensities
-    print(data)
+            data[f"{cname}_mean_intensity"] = staining_intensities
     return masks, data
+
+def aggregate(x, y, bin_size):
+    bins = np.arange(np.min(x), np.max(x), bin_size)
+    bin_centers = (bins[:-1] + bins[1:])/2
+    n_bins = len(bins)
+    y_binned = np.zeros(n_bins-1)
+    y_err_binned = np.zeros(n_bins-1)
+    for i in range(1, n_bins):
+        indices = np.where(np.logical_and(x>bins[i-1],x<bins[i]))[0]
+        y_in_bin = [y[j] for j in indices]
+        y_binned[i-1] = np.mean(y_in_bin)
+        y_err_binned[i-1] = np.std(y_in_bin)
+    return bin_centers, y_binned, y_err_binned

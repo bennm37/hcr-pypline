@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "hcrp"
 version = "0.1"
-dependencies = ["numpy", "scikit-learn",  "scikit-image", "scipy", "matplotlib", "pandas", "shapely", "opencv-python"]
+dependencies = ["numpy", "scikit-learn",  "scikit-image", "scipy", "matplotlib", "pandas", "shapely", "opencv-python", "big-fish"]
 
 
 [project.optional-dependencies]

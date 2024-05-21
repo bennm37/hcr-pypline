@@ -10,6 +10,7 @@ import cv2
 import os
 import datetime
 import pandas as pd
+import bigfish.detection as detection
 
 
 class FixedSizeRectangleSelector(RectangleSelector):
@@ -46,47 +47,70 @@ class FixedSizeRectangleSelector(RectangleSelector):
         self.extents = x0, x1, y0, y1
 
 
-def get_midline(image, name, window_name=None):
+def get_midline(stack, z, name, window_name=None):
     """Manually Select ROI midline Points From Image."""
+    image = stack[z]
     image_with_roi = image.copy()
     img8bit = (image_with_roi / 256).astype(np.uint8)
     image_with_roi_equalized = cv2.equalizeHist(img8bit)
+    image_with_roi_equalized = np.dstack([image_with_roi_equalized] * 3)
+    current_image = image_with_roi_equalized.copy()
     roi_points = []
     if window_name is None:
         window_name = f"Manually input midline for {name}"
-
+    LINE_COLOR = (255,0,0)
     def mouse_callback(event, x, y, flags, param):
         if event == cv2.EVENT_LBUTTONDOWN:
             roi_points.append((x, y))
-            cv2.circle(image_with_roi_equalized, (x, y), 3, (0, 0, 255), -1)
+            cv2.circle(current_image, (x, y), 3, LINE_COLOR, -1)
             if len(roi_points) > 1:
                 cv2.line(
-                    image_with_roi_equalized,
+                    current_image,
                     roi_points[-2],
                     roi_points[-1],
-                    (0, 0, 255),
+                    LINE_COLOR,
                     2,
                 )
-            cv2.imshow(window_name, image_with_roi_equalized)
+            cv2.imshow(window_name, current_image)
+
 
     cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
-    cv2.imshow(window_name, image_with_roi_equalized)
+    cv2.imshow(window_name, current_image)
     cv2.setMouseCallback(window_name, mouse_callback)
     while True:
         key = cv2.waitKey(1) & 0xFF
         if key == ord("q"):
-            break
+            if len(roi_points) > 1:
+                cv2.destroyAllWindows()
+                break
+            else:
+                print("You need to select at least two points.")
+        if key == ord("r"):
+            roi_points.clear()
+            current_image = image_with_roi_equalized.copy()
+            cv2.imshow(window_name, current_image)
+        if key == ord("u"):
+            z = min(z + 1, stack.shape[0] - 1)
+            image = stack[z]
+            cv2.destroyAllWindows()
+            return get_midline(stack, z, name, window_name)
+        if key == ord("d"):
+            z = max(z - 1, 0)
+            image = stack[z]
+            cv2.destroyAllWindows()
+            return get_midline(stack, z, name, window_name)
     cv2.destroyAllWindows()
     # change from image coords to spatial coords
     roi_points = np.array(roi_points)
     roi_points[:, [0, 1]] = roi_points[:, [1, 0]]
+    roi_points = np.concatenate([roi_points, np.full((roi_points.shape[0], 1), z)], axis=1)
     return roi_points
 
 
-def get_contour(image, name):
+def get_contour(stack, z, name):
     """Manually Select ROI midline Points for External Contour From Image."""
     roi_points = get_midline(
-        image, name, window_name=f"Manually input Contour for {name}"
+        stack, z, name, window_name=f"Manually input Contour for {name}"
     )
     return roi_points
 
@@ -158,17 +182,15 @@ def label(
     name = stack_path.split("/")[-1]
     mid_layer = int(mid_frac * stack.shape[0])
     nuclear = stack[mid_layer, :, :, 3]
-    contour = get_contour(nuclear, nuclear)
+    contour = get_contour(stack[:,:,:,-1], mid_layer, name)
     contour = np.hstack([contour])
     contour_out = f"{out}/{name}_contour.csv"
-    contour_df = pd.DataFrame(contour, columns=["x", "y"])
-    contour_df["z"] = mid_layer
+    contour_df = pd.DataFrame(contour, columns=["x", "y", "z"])
     contour_df.to_csv(contour_out, index=False)
     print(f"Contour points saved to {contour_out}.")
-    midline = get_midline(nuclear, nuclear)
+    midline = get_midline(stack[:,:,:,-1], contour[0,2], name)
     midline_out = f"{out}/{name}_midline.csv"
-    midline_df = pd.DataFrame(midline, columns=["x", "y"])
-    midline_df["z"] = mid_layer
+    midline_df = pd.DataFrame(midline, columns=["x", "y", "z"])
     midline_df.to_csv(midline_out, index=False)
     print(f"midline points saved to {out}/{name}_midline.csv.")
     background_out = f"{out}/{name}_background.csv"
