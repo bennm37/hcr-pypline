@@ -3,7 +3,7 @@ import numpy as np
 from skimage.measure import regionprops
 from skimage.io import imread
 import matplotlib.pyplot as plt
-from matplotlib.colors import LinearSegmentedColormap
+from matplotlib.colors import LinearSegmentedColormap, Normalize
 from shapely.geometry import Point, Polygon
 from scipy.interpolate import splprep, splev
 from scipy.spatial.distance import cdist
@@ -29,7 +29,7 @@ def get_cells(image, diameter=30, channels=[0, 0]):
     return masks, props
 
 
-def get_inernal_indices(centroids, roi):
+def get_internal_indices(centroids, roi):
     polygon = Polygon(roi)
     internal_indices = []
     for i, centroid in enumerate(centroids):
@@ -98,18 +98,28 @@ def segment(
         f"{label_location}/{name}_signal_background.csv", index_col=0
     )["mean_intensity"]
 
-    spline_points, spline_dist = get_spline_points(midline, contour)
     image = stack[z, :, :, -1]
+    spline_points, spline_dist = get_spline_points(midline, contour)
     masks, props = get_cells(image, diameter=diameter)
+    n_cells = len(props)
     centroids = np.array([prop.centroid for prop in props])
+    labels = [prop.label for prop in props]
     cell_spline_indices = np.argmin(cdist(centroids, spline_points), axis=1)
     distal_index = np.argmin(spline_dist[cell_spline_indices])
     spline_dist = spline_dist - spline_dist[distal_index]
-    internal_cell_indices = get_inernal_indices(centroids, contour)
+    internal_cell_indices = get_internal_indices(centroids, contour)
+    internal_masks = np.where(np.in1d(masks, internal_cell_indices).reshape(masks.shape), masks,0)
     cell_closest_spline_indices = np.argmin(
         cdist(centroids[internal_cell_indices], spline_points), axis=1
     )
     cell_spline_dist = spline_dist[cell_closest_spline_indices]
+    r_cmap = get_random_cmap(len(props))
+    labels = [prop.label for prop in props]
+    # plt.imshow(image, cmap="afmhot")
+    # plt.imshow(masks, alpha=0.8, cmap=r_cmap, vmin=0, vmax=len(props))
+    # norm = Normalize(vmin=0, vmax=len(props))
+    # plt.scatter(centroids[:, 1], centroids[:, 0], c=r_cmap(norm(labels)))
+    # plt.show()
     data["spline_dist"] = cell_spline_dist
     data["x"] = centroids[internal_cell_indices, 0]
     data["y"] = centroids[internal_cell_indices, 1]
@@ -119,12 +129,12 @@ def segment(
         channel_8bit = (channel / channel.max() * 255).astype(np.uint8)
         normalized_channel = cv2.equalizeHist(channel_8bit)
         if ctype == "hcr":
-            mask, hcr_props = quantify_hcr(
+            mask, hcr_centroids = quantify_hcr(
                 channel, background.loc[cname], **hcr_params[i]
             )
             # mask, hcr_props = cellpose_hcr(channel_8bit, diameter=5)
-            hcr_centroids = np.array([prop.centroid for prop in hcr_props])
-            internal_hit_indices = get_inernal_indices(hcr_centroids, contour)
+            # hcr_centroids = np.array([prop.centroid for prop in hcr_props])
+            internal_hit_indices = get_internal_indices(hcr_centroids, contour)
             if hcr_params[i]["verbose"]:
                 plt.imshow(
                     channel, cmap="afmhot", vmax=np.mean(channel) + 3 * np.std(channel)
@@ -148,13 +158,15 @@ def segment(
             )
             hcr_closest_cell_indices = np.argmin(distances_to_cells, axis=1)
             hcr_counts = np.bincount(hcr_closest_cell_indices, minlength=len(internal_cell_indices))
+            plt.imshow(channel, cmap="afmhot")  
+            plt.scatter(centroids[internal_cell_indices, 1], centroids[internal_cell_indices, 0], c=hcr_counts)
+            plt.imshow(internal_masks, cmap=get_random_cmap(len(internal_cell_indices)), alpha=0.3)
+            plt.show()
             data[f"{cname}_count"] = hcr_counts
         else:
-            internal_cell_masks = [masks == i for i in internal_cell_indices]
-            staining_intensities = [
-                np.mean(channel[mask]) for mask in internal_cell_masks
-            ]
-            data[f"{cname}_mean_intensity"] = staining_intensities
+            staining_intensities = np.array([np.mean(channel[masks==i]) for i in labels])
+            internal_staining_intensities = staining_intensities[internal_cell_indices]
+            data[f"{cname}_mean_intensity"] = internal_staining_intensities
     return masks, data
 
 def aggregate(x, y, bin_size):

@@ -5,7 +5,7 @@ import numpy as np
 from skimage.measure import regionprops
 from scipy import ndimage as ndi
 import cv2 as cv
-from hcrp.labelling import get_mean_region
+import bigfish.detection as detection
 
 
 # random colormap for labelling the regions
@@ -24,6 +24,8 @@ def quantify_hcr(
     pixel_intensity_thresh=0.000,
     fg_width=0.2,
     dot_intensity_thresh=0.05,
+    voxel_size=(100, 100),
+    spot_radius=(150, 150),
     verbose=False,
 ):
     blurred = ndi.gaussian_filter(image, sigma=sigma_blur)
@@ -63,7 +65,17 @@ def quantify_hcr(
         ax[1].imshow(labels, cmap=r_cmap)
         plt.show()
     props = regionprops(labels, intensity_image=renormalized_image)
-    return labels, props
+    centroids = np.array([prop.centroid for prop in props])
+    centroids_post_decomposition, dense_regions, reference_spot = detection.decompose_dense(
+        image=image.astype(np.uint16),
+        spots=centroids,
+        voxel_size=voxel_size,
+        spot_radius=spot_radius,
+        alpha=0.90,  # alpha impacts the number of spots per candidate region
+        beta=1,  # beta impacts the number of candidate regions to decompose
+        gamma=5, # gamma the filtering step to denoise the image
+    )  
+    return labels, centroids_post_decomposition
 
 def cellpose_hcr(image, diameter=3):
     model = Cellpose(gpu=True, model_type="cyto")

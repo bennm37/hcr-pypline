@@ -22,7 +22,7 @@ files = [
 # label_folder(folder, mid_frac=0.5)
 
 # backgrounds = [800, 1500, 800, 500]
-backgrounds = [800, 1500, 800, 800]
+backgrounds = [800, 1500, 800, 500]
 for i, file in enumerate(files):
     print(f"Processing {file}")
     rna = stack.read_image(f"{folder}/{file}").astype(np.float32)
@@ -33,8 +33,7 @@ for i, file in enumerate(files):
     c = 1
     z = 15
     rna_z = rna[z, :, :, c]
-    masks, props = quantify_hcr(rna_z, backgrounds[i], 0.2, dot_intensity_thresh=0.0275)
-    centroids = np.array([prop.centroid for prop in props])
+    masks, centroids = quantify_hcr(rna_z, backgrounds[i], 0.2, dot_intensity_thresh=0.0275)
     centroids_post_decomposition, dense_regions, reference_spot = detection.decompose_dense(
         image=rna[z, :, :, c].astype(np.uint16),
         spots=centroids,
