@@ -159,9 +159,10 @@ launch.json
 
 # personal
 data/*
+!data/Limb_Ext_Stg01
 itk_venv/
 image_location/
-
+cellpose/
 
 # PyCharm
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can

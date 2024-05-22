@@ -1,4 +1,5 @@
 from hcrp.hcr import quantify_hcr
+from hcrp.labelling import get_mean_region
 from skimage.io import imread, imsave
 import cv2
 import matplotlib.pyplot as plt
@@ -11,23 +12,23 @@ if __name__ == "__main__":
         stack = imread(
             "data/TdEmbryo_Hoechst_pMad488_dpp546_brk647_20240506_LimbExtension10-Ant.tif"
         )
-        image = stack[26, :, :, 3]
+        image = stack[26, :, :, 1]
         # write the image
         imsave("data/seperated.tif", image)
     else:
         image = imread("data/seperated.tif")
     image = (image // 256).astype(np.uint8)
     normalized = cv2.equalizeHist(image)
-    labels, props = quantify_hcr(
+    background = get_mean_region(normalized, None, "Background", size=50, vmax=None)
+    print(background)
+    labels, centroids = quantify_hcr(
         image,
-        high_contrast=normalized,
+        mean_background=0.5,
         sigma_blur=0.2,
         fg_width=0.05,
         dot_intensity_thresh=0.1,
-        size=50,
+        verbose=True,
     )
-    centroids = np.array([prop.centroid for prop in props])
-    intensities = np.array([prop.mean_intensity for prop in props])
     n_centroids = centroids.shape[0]
     p = 1.0 * np.arange(n_centroids) / (n_centroids - 1)
     fig, ax = plt.subplots()

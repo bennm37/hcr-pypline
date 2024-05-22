@@ -11,6 +11,8 @@ Activate the cellpose environment. \
 Install the hcrp package and dependencies \
 ```pip install -e .```
 
+For some reason, a Segfault is obtained unless Cellpose is the first import of the python process. So every script must start with 
+```from cellpose.models import Cellpose```
 <!-- 
 # Setup 
 Create a file in data called image location.\

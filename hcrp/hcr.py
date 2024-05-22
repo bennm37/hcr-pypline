@@ -1,10 +1,11 @@
+from cellpose.models import Cellpose
 import matplotlib.pyplot as plt
 from matplotlib.colors import Normalize, LinearSegmentedColormap
 import numpy as np
 from skimage.measure import regionprops
 from scipy import ndimage as ndi
 import cv2 as cv
-from hcrp.labelling import get_mean_region
+import bigfish.detection as detection
 
 
 # random colormap for labelling the regions
@@ -18,31 +19,20 @@ def random_cmap(n=256, name="random_cmap"):
 
 def quantify_hcr(
     image,
-    high_contrast=None,
+    mean_background,
     sigma_blur=1,
     pixel_intensity_thresh=0.000,
     fg_width=0.2,
     dot_intensity_thresh=0.05,
-    size=50,
+    voxel_size=(100, 100),
+    spot_radius=(150, 150),
     verbose=False,
 ):
-    # Get the mean value of the background
-    mean_background = get_mean_region(
-        image, high_contrast, "Background", size=size, vmax=None
-    )
-    # # Get the mean value of the signal + background
-    mean_signal_background = get_mean_region(
-        image, high_contrast, "Signal + Background", size=size, vmax=None
-    )
-    # mean_background = 5.8792
-    # mean_signal_background = 8.1856
-    image = ndi.gaussian_filter(image, sigma=sigma_blur)
-    normalized_image = (image - mean_background) / (image.max() - mean_background)
-    # threshold the image
+    blurred = ndi.gaussian_filter(image, sigma=sigma_blur)
+    normalized_image = (blurred - mean_background) / (blurred.max() - mean_background)
     thresholded_image = np.where(
         normalized_image > pixel_intensity_thresh, normalized_image, 0
     )
-    # renormalize the image
     renormalized_image = (thresholded_image - thresholded_image.min()) / (
         thresholded_image.max() - thresholded_image.min()
     )
@@ -51,7 +41,9 @@ def quantify_hcr(
     sure_bg = cv.dilate(thresh, kernel, iterations=10)
     dist_transform = cv.distanceTransform(thresh, cv.DIST_L2, 5)
     if verbose:
-        plt.imshow(dist_transform)
+        fig, ax = plt.subplots(2, 1, sharex=True, sharey=True)
+        ax[0].imshow(image, cmap="afmhot", vmax=np.mean(image)+3*np.std(image))
+        ax[1].imshow(dist_transform, cmap="afmhot", vmax=dist_transform.max())
         plt.show()
     erode = cv.erode(thresh, np.ones((2, 2)), iterations=1)
     ret, sure_fg = cv.threshold(dist_transform, fg_width * dist_transform.max(), 255, 0)
@@ -67,9 +59,26 @@ def quantify_hcr(
     rgb_image = np.dstack([image * 255] * 3).astype(np.uint8)
     labels = cv.watershed(rgb_image, markers)
     r_cmap = random_cmap(labels.max())
-    fig, ax = plt.subplots(2, 1, sharex=True, sharey=True)
-    ax[0].imshow(image, cmap="afmhot", vmax=20 * np.mean(image))
-    ax[1].imshow(labels, cmap=r_cmap)
-    plt.show()
+    if verbose:
+        fig, ax = plt.subplots(2, 1, sharex=True, sharey=True)
+        ax[0].imshow(image, cmap="afmhot", vmax=20 * np.mean(image))
+        ax[1].imshow(labels, cmap=r_cmap)
+        plt.show()
     props = regionprops(labels, intensity_image=renormalized_image)
-    return labels, props
+    centroids = np.array([prop.centroid for prop in props])
+    centroids_post_decomposition, dense_regions, reference_spot = detection.decompose_dense(
+        image=image.astype(np.uint16),
+        spots=centroids,
+        voxel_size=voxel_size,
+        spot_radius=spot_radius,
+        alpha=0.90,  # alpha impacts the number of spots per candidate region
+        beta=1,  # beta impacts the number of candidate regions to decompose
+        gamma=5, # gamma the filtering step to denoise the image
+    )  
+    return labels, centroids_post_decomposition
+
+def cellpose_hcr(image, diameter=3):
+    model = Cellpose(gpu=True, model_type="cyto")
+    masks, flows, styles, diams = model.eval(image, diameter=diameter, channels=[0, 0])
+    props = regionprops(masks)
+    return masks, props
