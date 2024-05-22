@@ -8,7 +8,7 @@ from shapely.geometry import Point, Polygon
 from scipy.interpolate import splprep, splev
 from scipy.spatial.distance import cdist
 from hcrp import quantify_hcr
-from hcrp.hcr import cellpose_hcr
+from hcrp.labelling import load_labels
 import pandas as pd
 from collections import OrderedDict
 import cv2
@@ -95,7 +95,7 @@ def segment(
     labels = [prop.label for prop in props]
     cell_spline_indices = np.argmin(cdist(centroids, spline_points), axis=1)
     distal_index = np.argmin(spline_dist[cell_spline_indices])
-    spline_dist = spline_dist - spline_dist[distal_index]
+    spline_dist = spline_dist - spline_dist[cell_spline_indices[distal_index]]
     internal_cell_indices = get_internal_indices(centroids, contour)
     internal_masks = np.where(
         np.in1d(masks, internal_cell_indices).reshape(masks.shape), masks, 0
@@ -183,18 +183,6 @@ def segment(
                 plt.show()
             data[f"{cname}_mean_intensity"] = internal_staining_intensities
     return masks, data
-
-
-def load_labels(label_location, name, midline_data):
-    midline_data = pd.read_csv(f"{label_location}/{name}_midline.csv")
-    z = midline_data["z"].iloc[0]
-    midline = np.array(midline_data[["x", "y"]])
-    contour = np.array(pd.read_csv(f"{label_location}/{name}_contour.csv")[["x", "y"]])
-    background = pd.read_csv(f"{label_location}/{name}_background.csv", index_col=0)[
-        "mean_intensity"
-    ]
-    return midline, contour, background, z
-
 
 def aggregate(x, y, bin_size):
     bins = np.arange(np.min(x), np.max(x), bin_size)

@@ -7,7 +7,7 @@ from hcrp.segmentation import get_cells, segment
 def test_cellpose():
     # for cytoplasm
     dropbox = "/Users/nicholb/Dropbox"
-    folder = f"{dropbox}/Anqi/Intership/AI_segmentation/python_segmentation/Limb_Ext_Stg01"
+    folder = f"{dropbox}/Anqi/Intership/AI_segmentation/Dataset1_brk_dpp_pMad_Nuclei/Limb_Ext_Stg01"
     stack = np.array(io.imread(f"{folder}/Stg01_Emb02_Lb01.tif"))
     layer = 10
     img = stack[layer, :, :, 3]
@@ -19,7 +19,7 @@ def test_cellpose():
 
 def test_get_cells():
     dropbox = "/Users/nicholb/Dropbox"
-    folder = f"{dropbox}/Anqi/Intership/AI_segmentation/python_segmentation/Limb_Ext_Stg01"
+    folder = f"{dropbox}/Anqi/Intership/AI_segmentation/Dataset1_brk_dpp_pMad_Nuclei/Limb_Ext_Stg01"
     stack = np.array(io.imread(f"{folder}/Stg01_Emb02_Lb01.tif"))
     layer = 10
     img = stack[layer, :, :, 3]
@@ -29,7 +29,7 @@ def test_get_cells():
 
 def test_segment():
     dropbox = "/Users/nicholb/Dropbox"
-    folder = f"{dropbox}/Anqi/Intership/AI_segmentation/python_segmentation/Limb_Ext_Stg01"
+    folder = f"{dropbox}/Anqi/Intership/AI_segmentation/Dataset1_brk_dpp_pMad_Nuclei/Limb_Ext_Stg01"
     segment(f"{folder}/Stg01_Emb02_Lb01", f"data/Limb_Ext_Stg01")
 
 if __name__ == "__main__":

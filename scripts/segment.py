@@ -1,17 +1,21 @@
 
 from cellpose.models import Cellpose
-from hcrp.segmentation import segment, default_hcr_params, aggregate
-from hcrp.labelling import label
+from hcrp.segmentation import segment, default_hcr_params
+from hcrp.labelling import label_folder, load_labels
+from hcrp.plotting import plot_gradients, plot_channels
+from skimage.io import imread
 import matplotlib.pyplot as plt
+import os
 
-dropbox_root = (
-    "/Users/nicholb/Dropbox/Anqi/Intership/AI_segmentation/python_segmentation"
-)
-filename = "TdEmbryo_Hoechst_pMad488_dpp546_brk647_20240506_LimbExtension10-Ant"
+dropbox = "/Users/nicholb/Dropbox"
+folder = f"{dropbox}/Anqi/Intership/AI_segmentation/Dataset1_brk_dpp_pMad_Nuclei/Limb_Ext_Stg01"
+
 # label(f"{dropbox_root}/{filename}", "data/example", 0.5)
-def segment_folder():
-    stack_path = f"{dropbox_root}/{filename}"
-    label_location = f"data/example"
+
+def segment_folder(folder=folder, label_location="data/example"):
+    stack_names = [
+        name.split(".")[0] for name in os.listdir(folder) if name.endswith(".tif")
+    ]
     channel_names = ["brk", "dpp", "pmad", "nuclear"]
     channel_types = ["hcr", "hcr", "staining", "nuclear"]
     brk_params = default_hcr_params.copy()
@@ -23,30 +27,18 @@ def segment_folder():
     dpp_params["dot_intensity_thresh"] = 0.03
     dpp_params["sigma_blur"] = 0.2
     dpp_params["verbose"] = False
-    # dpp_params["fg_width"] = 0.7
-    masks, data = segment(stack_path, label_location, channel_names=channel_names, channel_types=channel_types, hcr_params=[brk_params, dpp_params, None, None], verbose=False)
-    fig, ax = plt.subplots()
-    ax1 = ax.twinx()
-    colors = ["r", "g", "b", "k"]
-    xshift = 0
-    for i, (cname, ctype) in enumerate(zip(channel_names[:-1], channel_types[:-1])):
-        # get color from cycle
-        color = colors[i]
-        if ctype == "hcr":
-            unit = "count"
-            bin_centers, c_mean, c_error = aggregate(data["spline_dist"], data[f"{cname}_{unit}"], 50)
-            ax.errorbar(bin_centers + xshift * i, c_mean, yerr=c_error, label=cname, color=color, capsize=5)
-        else:
-            unit = "mean_intensity"
-            bin_centers, c_mean, c_error = aggregate(data["spline_dist"], data[f"{cname}_{unit}"], 50)
-            ax1.errorbar(bin_centers + xshift * i, c_mean, yerr=c_error, label=cname, color=color, capsize=5)
-    ax.set_xlabel("Distance Along the Midline (px)")
-    ax.set_ylabel("Count")
-    ax.set(ylim=(0, None))
-    ax1.set(ylim=(0, None))
-    ax1.set_ylabel("Mean Intensity")
-    fig.legend()
-    plt.show()
+    for stack_name in stack_names:
+        contour, midline, background, z = load_labels(label_location, stack_name)
+        # dpp_params["fg_width"] = 0.7
+        masks, data = segment(f"{folder}/{stack_name}", label_location, channel_names=channel_names, channel_types=channel_types, hcr_params=[brk_params, dpp_params, None, None], verbose=False)
+        stack = imread(f"{folder}/{stack_name}.tif")
+        plot_channels(stack[z], channel_names, channel_types, contour, midline)
+        plot_gradients(channel_names, channel_types, data)
+        plt.show()
+
 
 if __name__ == "__main__":
-    segment_folder()
+    label_location = "data/Limb_Ext_Stg01"
+    if not os.path.exists(label_location):
+        label_location = label_folder(folder)
+    segment_folder(folder, label_location)

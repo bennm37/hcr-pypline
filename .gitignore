@@ -159,6 +159,7 @@ launch.json
 
 # personal
 data/*
+!data/Limb_Ext_Stg01
 itk_venv/
 image_location/
 cellpose/

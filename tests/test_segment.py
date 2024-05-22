@@ -7,6 +7,12 @@ dropbox_root = (
     "/Users/nicholb/Dropbox/Anqi/Intership/AI_segmentation/python_segmentation"
 )
 filename = "TdEmbryo_Hoechst_pMad488_dpp546_brk647_20240506_LimbExtension10-Ant"
+dropbox_root = (
+    "/Users/nicholb/Dropbox/Anqi/Intership/AI_segmentation/python_segmentation"
+)
+filename = "TdEmbryo_Hoechst_pMad488_dpp546_brk647_20240506_LimbExtension10-Ant"
+
+
 # label(f"{dropbox_root}/{filename}", "data/example", 0.5)
 def test_segment():
     stack_path = f"{dropbox_root}/{filename}"
@@ -16,14 +22,20 @@ def test_segment():
     brk_params = default_hcr_params.copy()
     brk_params["dot_intensity_thresh"] = 0.03
     brk_params["sigma_blur"] = 1
-    brk_params["verbose"] = True
+    brk_params["verbose"] = False
 
     dpp_params = default_hcr_params.copy()
     dpp_params["dot_intensity_thresh"] = 0.03
     dpp_params["sigma_blur"] = 0.2
-    dpp_params["verbose"] = True
+    dpp_params["verbose"] = False
     # dpp_params["fg_width"] = 0.7
-    masks, data = segment(stack_path, label_location, channel_names=channel_names, channel_types=channel_types, hcr_params=[brk_params, dpp_params, None, None])
+    masks, data = segment(
+        stack_path,
+        label_location,
+        channel_names=channel_names,
+        channel_types=channel_types,
+        hcr_params=[brk_params, dpp_params, None, None],
+    )
     fig, ax = plt.subplots()
     ax1 = ax.twinx()
     colors = ["r", "g", "b", "k"]
@@ -33,12 +45,30 @@ def test_segment():
         color = colors[i]
         if ctype == "hcr":
             unit = "count"
-            bin_centers, c_mean, c_error = aggregate(data["spline_dist"], data[f"{cname}_{unit}"], 50)
-            ax.errorbar(bin_centers + xshift * i, c_mean, yerr=c_error, label=cname, color=color, capsize=5)
+            bin_centers, c_mean, c_error = aggregate(
+                data["spline_dist"], data[f"{cname}_{unit}"], 50
+            )
+            ax.errorbar(
+                bin_centers + xshift * i,
+                c_mean,
+                yerr=c_error,
+                label=cname,
+                color=color,
+                capsize=5,
+            )
         else:
             unit = "mean_intensity"
-            bin_centers, c_mean, c_error = aggregate(data["spline_dist"], data[f"{cname}_{unit}"], 50)
-            ax1.errorbar(bin_centers + xshift * i, c_mean, yerr=c_error, label=cname, color=color, capsize=5)
+            bin_centers, c_mean, c_error = aggregate(
+                data["spline_dist"], data[f"{cname}_{unit}"], 50
+            )
+            ax1.errorbar(
+                bin_centers + xshift * i,
+                c_mean,
+                yerr=c_error,
+                label=cname,
+                color=color,
+                capsize=5,
+            )
     ax.set_xlabel("Distance Along the Midline (px)")
     ax.set_ylabel("Count")
     ax.set(ylim=(0, None))
@@ -46,6 +76,7 @@ def test_segment():
     ax1.set_ylabel("Mean Intensity")
     fig.legend()
     plt.show()
+
 
 if __name__ == "__main__":
     test_segment()

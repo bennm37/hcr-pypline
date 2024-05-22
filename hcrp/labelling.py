@@ -168,6 +168,52 @@ def get_mean_region(image, high_contrast, name, size=50, vmax=None):
         print("No region selected.")
         return get_mean_region(image, high_contrast, name, size, vmax)
 
+def get_z(stack, label_location, name, window_name=None, z=None):
+    """Get the range of z values for a given stack."""
+    midline, contour, background, z_midline = load_labels(label_location, name)
+    if z is None:
+        z = z_midline
+    image = stack[z]
+    image_with_roi = image.copy()
+    img8bit = (image_with_roi / 256).astype(np.uint8)
+    image_with_roi_equalized = cv2.equalizeHist(img8bit)
+    image_with_roi_equalized = np.dstack([image_with_roi_equalized] * 3)
+    if window_name is None:
+        window_name = f"Select z for {name}"
+    cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+    # overlay the midline and contour
+    midline = np.array([midline[:,1],midline[:,0]]).astype(np.int32).T
+    image_with_roi_equalized = cv2.polylines(
+        image_with_roi_equalized, [midline], False, (0, 0, 255), 2
+    )
+    contour = np.array([contour[:,1],contour[:,0]]).astype(np.int32).T
+    image_with_roi_equalized = cv2.polylines(
+        image_with_roi_equalized, [contour], False, (255, 0, 0), 2
+    )
+    cv2.imshow(window_name, image_with_roi_equalized)
+    while True:
+        key = cv2.waitKey(1) & 0xFF
+        if key == ord("q"):
+            break
+        if key == ord("u"):
+            z = min(z + 1, stack.shape[0] - 1)
+            image = stack[z]
+            cv2.destroyAllWindows()
+            return get_z(stack, label_location, name, window_name, z)
+        if key == ord("d"):
+            z = max(z - 1, 0)
+            image = stack[z]
+            cv2.destroyAllWindows()
+            return get_z(stack, label_location, name, window_name, z)
+    cv2.destroyAllWindows()
+    return z
+
+def get_z_range(stack, label_location, name):
+    """Get the range of z values for a given stack."""
+    z_low = get_z(stack, label_location, f"{name}", window_name=f"Select z_low for {name}")
+    z_high = get_z(stack, label_location, f"{name}", window_name=f"Select z_high for {name}")
+    return z_low, z_high
+
 
 def label(
     stack_path,
@@ -194,10 +240,8 @@ def label(
     midline_df.to_csv(midline_out, index=False)
     print(f"midline points saved to {out}/{name}_midline.csv.")
     background_out = f"{out}/{name}_background.csv"
-    signal_background_out = f"{out}/{name}_signal_background.csv"
     columns = ["mean_intensity", "window_length", "x", "y", "z"]
     background_df = pd.DataFrame(columns=columns)
-    signal_background_df = pd.DataFrame(columns=columns)
     for j, channel_name in enumerate(channel_names[:-1]):
         channel = stack[mid_layer, :, :, j]
         normalized_channel = (channel // 256).astype(np.uint8)
@@ -205,28 +249,14 @@ def label(
         background, background_center = get_mean_region(
             channel, normalized_channel, f"{name} Background {channel_name}", size=size
         )
-        signal_background, signal_background_center = get_mean_region(
-            channel,
-            normalized_channel,
-            f"{name} Signal + Background {channel_name}",
-            size=size,
-        )
         background_df.loc[channel_name] = [
             background,
             size,
             *background_center,
             mid_layer,
         ]
-        signal_background_df.loc[channel_name] = [
-            signal_background,
-            size,
-            *signal_background_center,
-            mid_layer,
-        ]
     background_df.to_csv(background_out, index=True)
     print(f"Backgound data saved to {background_out}.")
-    signal_background_df.to_csv(signal_background_out, index=True)
-    print(f"Signal + Background data saved to {signal_background_out}.")
     print(f"Finished labelling {stack_path}.")
 
 
@@ -245,3 +275,13 @@ def label_folder(folder, mid_frac=0.5, channel_names=["brk", "dpp", "pMad", "nuc
         label(f"{folder}/{name}", data_out, mid_frac, channel_names)
     print("Finished labelling all images.")
     return data_out
+
+def load_labels(label_location, name):
+    midline_data = pd.read_csv(f"{label_location}/{name}_midline.csv")
+    z = midline_data["z"].iloc[0]
+    midline = np.array(midline_data[["x", "y"]])
+    contour = np.array(pd.read_csv(f"{label_location}/{name}_contour.csv")[["x", "y"]])
+    background = pd.read_csv(f"{label_location}/{name}_background.csv", index_col=0)[
+        "mean_intensity"
+    ]
+    return midline, contour, background, z
