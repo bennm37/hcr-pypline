@@ -1,21 +1,16 @@
 from cellpose.models import Cellpose
 from hcrp.segmentation import segment, default_hcr_params, aggregate
 from hcrp.labelling import label
+from hcrp import get_path
 import matplotlib.pyplot as plt
 
-dropbox_root = (
-    "/Users/nicholb/Dropbox/Anqi/Intership/AI_segmentation/python_segmentation"
-)
-filename = "TdEmbryo_Hoechst_pMad488_dpp546_brk647_20240506_LimbExtension10-Ant"
-dropbox_root = (
-    "/Users/nicholb/Dropbox/Anqi/Intership/AI_segmentation/python_segmentation"
-)
+folder = "data"
 filename = "TdEmbryo_Hoechst_pMad488_dpp546_brk647_20240506_LimbExtension10-Ant"
 
 
 # label(f"{dropbox_root}/{filename}", "data/example", 0.5)
 def test_segment():
-    stack_path = f"{dropbox_root}/{filename}"
+    stack_path = f"{folder}/{filename}"
     label_location = f"data/example"
     channel_names = ["brk", "dpp", "pmad", "nuclear"]
     channel_types = ["hcr", "hcr", "staining", "nuclear"]

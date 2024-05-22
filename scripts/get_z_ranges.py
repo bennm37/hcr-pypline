@@ -1,8 +1,10 @@
+from hcrp import get_path
 from hcrp.labelling import get_z_range, label_folder
-import os 
+import os
 from skimage.io import imread
 import pandas as pd
 import numpy as np
+
 
 def get_z_ranges(folder, label_location, data_out=None):
     stack_names = [
@@ -15,12 +17,12 @@ def get_z_ranges(folder, label_location, data_out=None):
     os.mkdir(data_out)
     for stack_name in stack_names:
         stack = imread(f"{folder}/{stack_name}.tif")
-        z_range = get_z_range(stack[:,:,:,-1], label_location, stack_name)
-        df = pd.DataFrame(np.array([z_range]), columns=["z_low","z_high"])
+        z_range = get_z_range(stack[:, :, :, -1], label_location, stack_name)
+        df = pd.DataFrame(np.array([z_range]), columns=["z_low", "z_high"])
         df.to_csv(f"{label_location}_z_ranges/{stack_name}_z_range.csv", index=False)
+
 
 if __name__ == "__main__":
     label_location = "data/Limb_Ext_Stg01"
-    dropbox = "/Users/nicholb/Dropbox"
-    folder = f"{dropbox}/Anqi/Intership/AI_segmentation/Dataset1_brk_dpp_pMad_Nuclei/Limb_Ext_Stg01"
+    folder = f"{get_path('dropbox.txt')}/Anqi/Intership/AI_segmentation/Dataset1_brk_dpp_pMad_Nuclei/Limb_Ext_Stg01"
     get_z_ranges(folder, label_location)

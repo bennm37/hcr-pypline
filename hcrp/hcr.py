@@ -6,6 +6,15 @@ from skimage.measure import regionprops
 from scipy import ndimage as ndi
 import cv2 as cv
 import bigfish.detection as detection
+import pandas as pd
+
+DEFAULT_HCR_PARAMS = {
+    "sigma_blur": 0.2,
+    "pixel_intensity_thresh": 0.0,
+    "fg_width": 0.2,
+    "dot_intensity_thresh": 0.05,
+    "verbose": False,
+}
 
 
 # random colormap for labelling the regions
@@ -42,7 +51,7 @@ def quantify_hcr(
     dist_transform = cv.distanceTransform(thresh, cv.DIST_L2, 5)
     if verbose:
         fig, ax = plt.subplots(2, 1, sharex=True, sharey=True)
-        ax[0].imshow(image, cmap="afmhot", vmax=np.mean(image)+3*np.std(image))
+        ax[0].imshow(image, cmap="afmhot", vmax=np.mean(image) + 3 * np.std(image))
         ax[1].imshow(dist_transform, cmap="afmhot", vmax=dist_transform.max())
         plt.show()
     erode = cv.erode(thresh, np.ones((2, 2)), iterations=1)
@@ -66,19 +75,28 @@ def quantify_hcr(
         plt.show()
     props = regionprops(labels, intensity_image=renormalized_image)
     centroids = np.array([prop.centroid for prop in props])
-    centroids_post_decomposition, dense_regions, reference_spot = detection.decompose_dense(
-        image=image.astype(np.uint16),
-        spots=centroids,
-        voxel_size=voxel_size,
-        spot_radius=spot_radius,
-        alpha=0.90,  # alpha impacts the number of spots per candidate region
-        beta=1,  # beta impacts the number of candidate regions to decompose
-        gamma=5, # gamma the filtering step to denoise the image
-    )  
+    centroids_post_decomposition, dense_regions, reference_spot = (
+        detection.decompose_dense(
+            image=image.astype(np.uint16),
+            spots=centroids,
+            voxel_size=voxel_size,
+            spot_radius=spot_radius,
+            alpha=0.90,  # alpha impacts the number of spots per candidate region
+            beta=1,  # beta impacts the number of candidate regions to decompose
+            gamma=5,  # gamma the filtering step to denoise the image
+        )
+    )
+    centroids_post_decomposition = pd.DataFrame(
+        centroids_post_decomposition, columns=["x", "y"]
+    )
     return labels, centroids_post_decomposition
 
-def cellpose_hcr(image, diameter=3):
-    model = Cellpose(gpu=True, model_type="cyto")
-    masks, flows, styles, diams = model.eval(image, diameter=diameter, channels=[0, 0])
-    props = regionprops(masks)
-    return masks, props
+
+def quantify_staining(image, masks, cell_data, name="staining"):
+    """Quantify the staining in the cells."""
+    intensities = []
+    for label in cell_data.index:
+        mask = masks == label
+        intensities.append(image[mask].mean())
+    cell_data[f"{name}_mean_intensity"] = intensities
+    return cell_data

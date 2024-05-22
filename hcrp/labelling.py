@@ -58,7 +58,8 @@ def get_midline(stack, z, name, window_name=None):
     roi_points = []
     if window_name is None:
         window_name = f"Manually input midline for {name}"
-    LINE_COLOR = (255,0,0)
+    LINE_COLOR = (255, 0, 0)
+
     def mouse_callback(event, x, y, flags, param):
         if event == cv2.EVENT_LBUTTONDOWN:
             roi_points.append((x, y))
@@ -72,7 +73,6 @@ def get_midline(stack, z, name, window_name=None):
                     2,
                 )
             cv2.imshow(window_name, current_image)
-
 
     cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
     cv2.imshow(window_name, current_image)
@@ -103,7 +103,9 @@ def get_midline(stack, z, name, window_name=None):
     # change from image coords to spatial coords
     roi_points = np.array(roi_points)
     roi_points[:, [0, 1]] = roi_points[:, [1, 0]]
-    roi_points = np.concatenate([roi_points, np.full((roi_points.shape[0], 1), z)], axis=1)
+    roi_points = np.concatenate(
+        [roi_points, np.full((roi_points.shape[0], 1), z)], axis=1
+    )
     return roi_points
 
 
@@ -168,6 +170,7 @@ def get_mean_region(image, high_contrast, name, size=50, vmax=None):
         print("No region selected.")
         return get_mean_region(image, high_contrast, name, size, vmax)
 
+
 def get_z(stack, label_location, name, window_name=None, z=None):
     """Get the range of z values for a given stack."""
     midline, contour, background, z_midline = load_labels(label_location, name)
@@ -182,11 +185,11 @@ def get_z(stack, label_location, name, window_name=None, z=None):
         window_name = f"Select z for {name}"
     cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
     # overlay the midline and contour
-    midline = np.array([midline[:,1],midline[:,0]]).astype(np.int32).T
+    midline = np.array([midline[:, 1], midline[:, 0]]).astype(np.int32).T
     image_with_roi_equalized = cv2.polylines(
         image_with_roi_equalized, [midline], False, (0, 0, 255), 2
     )
-    contour = np.array([contour[:,1],contour[:,0]]).astype(np.int32).T
+    contour = np.array([contour[:, 1], contour[:, 0]]).astype(np.int32).T
     image_with_roi_equalized = cv2.polylines(
         image_with_roi_equalized, [contour], False, (255, 0, 0), 2
     )
@@ -208,10 +211,15 @@ def get_z(stack, label_location, name, window_name=None, z=None):
     cv2.destroyAllWindows()
     return z
 
+
 def get_z_range(stack, label_location, name):
     """Get the range of z values for a given stack."""
-    z_low = get_z(stack, label_location, f"{name}", window_name=f"Select z_low for {name}")
-    z_high = get_z(stack, label_location, f"{name}", window_name=f"Select z_high for {name}")
+    z_low = get_z(
+        stack, label_location, f"{name}", window_name=f"Select z_low for {name}"
+    )
+    z_high = get_z(
+        stack, label_location, f"{name}", window_name=f"Select z_high for {name}"
+    )
     return z_low, z_high
 
 
@@ -224,17 +232,17 @@ def label(
 ):
     """Label a single image."""
     assert channel_names[-1] == "nuclear", "The last channel must be nuclear."
-    stack = imread(f"{stack_path}.tif")
+    stack = imread(stack_path)
     name = stack_path.split("/")[-1]
     mid_layer = int(mid_frac * stack.shape[0])
     nuclear = stack[mid_layer, :, :, 3]
-    contour = get_contour(stack[:,:,:,-1], mid_layer, name)
+    contour = get_contour(stack[:, :, :, -1], mid_layer, name)
     contour = np.hstack([contour])
     contour_out = f"{out}/{name}_contour.csv"
     contour_df = pd.DataFrame(contour, columns=["x", "y", "z"])
     contour_df.to_csv(contour_out, index=False)
     print(f"Contour points saved to {contour_out}.")
-    midline = get_midline(stack[:,:,:,-1], contour[0,2], name)
+    midline = get_midline(stack[:, :, :, -1], contour[0, 2], name)
     midline_out = f"{out}/{name}_midline.csv"
     midline_df = pd.DataFrame(midline, columns=["x", "y", "z"])
     midline_df.to_csv(midline_out, index=False)
@@ -275,6 +283,7 @@ def label_folder(folder, mid_frac=0.5, channel_names=["brk", "dpp", "pMad", "nuc
         label(f"{folder}/{name}", data_out, mid_frac, channel_names)
     print("Finished labelling all images.")
     return data_out
+
 
 def load_labels(label_location, name):
     midline_data = pd.read_csv(f"{label_location}/{name}_midline.csv")

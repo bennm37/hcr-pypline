@@ -5,9 +5,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 from hcrp.hcr import quantify_hcr
 from hcrp.labelling import label_folder
+from hcrp import get_path
 
-dropbox = "/Users/nicholb/Dropbox"
-folder = f"{dropbox}/Anqi/Intership/AI_segmentation/Dataset1_brk_dpp_pMad_Nuclei/Limb_Ext_Stg01"
+folder = f"{get_path()}/Anqi/Intership/AI_segmentation/Dataset1_brk_dpp_pMad_Nuclei/Limb_Ext_Stg01"
 files = [
     "Stg01_Emb01_Ant01.tif",
     "Stg01_Emb01_T102.tif",
@@ -33,7 +33,7 @@ for i, file in enumerate(files):
         # threshold=500,
         return_threshold=True,
         voxel_size=(pz_nano, px_nano, px_nano),
-        spot_radius=(700,350,350),
+        spot_radius=(700, 350, 350),
     )
     print("detected spots")
     print("\r shape: {0}".format(spots.shape))
@@ -42,7 +42,9 @@ for i, file in enumerate(files):
     z = 15
     spots_z = spots[spots[:, 0] == z, 1:]
     rna_z = rna[z, :, :, c]
-    masks, centroids = quantify_hcr(rna_z, backgrounds[i], 0.2, dot_intensity_thresh=0.03)
+    masks, centroids = quantify_hcr(
+        rna_z, backgrounds[i], 0.2, dot_intensity_thresh=0.03
+    )
     fig, ax = plt.subplots(2, 1, sharex=True, sharey=True)
     fig.set_size_inches(10, 7)
     ax[0].imshow(rna_z, cmap="afmhot", vmax=np.mean(spots_z) + 20 * np.std(spots_z))
