@@ -7,17 +7,22 @@ def plot_gradients(channel_names, channel_types, data, split=True, pixel_to_mu=N
     fig, ax = plt.subplots()
     ax1 = ax.twinx()
     colors = ["r", "g", "b", "k"]
-    xshift = 0
+    if pixel_to_mu is not None:
+        dist = data["spline_dist"] * pixel_to_mu
+        ax.set_xlabel("Distance Along the Midline (um)")
+    else:
+        dist = data["spline_dist"]
+        ax.set_xlabel("Distance Along the Midline (px)")
     for i, (cname, ctype) in enumerate(zip(channel_names[:-1], channel_types[:-1])):
         # get color from cycle
         color = colors[i]
         if ctype == "hcr":
             unit = "count"
             bin_centers, c_mean, c_error = aggregate(
-                data["spline_dist"], data[f"{cname}_{unit}"], 50
+                dist, data[f"{cname}_{unit}"], 50, xmin=0
             )
             ax.errorbar(
-                bin_centers + xshift * i,
+                bin_centers,
                 c_mean,
                 yerr=c_error,
                 label=cname,
@@ -27,17 +32,17 @@ def plot_gradients(channel_names, channel_types, data, split=True, pixel_to_mu=N
         else:
             unit = "mean_intensity"
             bin_centers, c_mean, c_error = aggregate(
-                data["spline_dist"], data[f"{cname}_{unit}"], 50
+                dist, data[f"{cname}_{unit}"], 50, xmin=0
             )
             ax1.errorbar(
-                bin_centers + xshift * i,
+                bin_centers,
                 c_mean,
                 yerr=c_error,
                 label=cname,
                 color=color,
                 capsize=5,
             )
-    ax.set_xlabel("Distance Along the Midline (px)")
+    ax.set_xlim(0, None)
     ax.set_ylabel("Count")
     ax.set(ylim=(0, None))
     ax1.set(ylim=(0, None))
@@ -89,7 +94,7 @@ def plot_cell_property(cell_data, channel, prop_name, f=None):
     ax.imshow(channel, cmap="afmhot", vmax=np.mean(channel) + 3 * np.std(channel))
     if f is not None:
         color_data = f(cell_data[prop_name])
-    else: 
+    else:
         color_data = cell_data[prop_name]
     ax.scatter(cell_data["y"], cell_data["x"], c=color_data)
     ax.axis("off")
