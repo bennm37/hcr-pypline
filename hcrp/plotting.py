@@ -3,12 +3,13 @@ from hcrp.segmentation import aggregate, get_random_cmap
 import numpy as np
 
 
-def plot_gradients(channel_names, channel_types, data, split=True, pixel_to_mu=None):
+def plot_gradients(channel_names, channel_types, data, pixel_to_mu=None, bin_size=50):
     fig, ax = plt.subplots()
     ax1 = ax.twinx()
     colors = ["r", "g", "b", "k"]
     if pixel_to_mu is not None:
         dist = data["spline_dist"] * pixel_to_mu
+        bin_size *= pixel_to_mu
         ax.set_xlabel("Distance Along the Midline (um)")
     else:
         dist = data["spline_dist"]
@@ -19,7 +20,7 @@ def plot_gradients(channel_names, channel_types, data, split=True, pixel_to_mu=N
         if ctype == "hcr":
             unit = "count"
             bin_centers, c_mean, c_error = aggregate(
-                dist, data[f"{cname}_{unit}"], 50, xmin=0
+                dist, data[f"{cname}_{unit}"], bin_size, xmin=0
             )
             ax.errorbar(
                 bin_centers,
@@ -32,7 +33,7 @@ def plot_gradients(channel_names, channel_types, data, split=True, pixel_to_mu=N
         else:
             unit = "mean_intensity"
             bin_centers, c_mean, c_error = aggregate(
-                dist, data[f"{cname}_{unit}"], 50, xmin=0
+                dist, data[f"{cname}_{unit}"], bin_size, xmin=0
             )
             ax1.errorbar(
                 bin_centers,

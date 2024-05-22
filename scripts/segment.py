@@ -49,5 +49,6 @@ plot_gradients(
     ["brk", "dpp", "pmad", "nuclear"],
     ["hcr", "hcr", "staining", "nuclear"],
     cell_data[cell_data["endoderm"]],
+    pixel_to_mu=1/2.8906,
 )
 plt.show()
