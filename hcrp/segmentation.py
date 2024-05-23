@@ -95,7 +95,7 @@ def project_to_cells(hcr_data, cell_data, name):
     distances = cdist(hcr_hits, cell_centroids)
     closest_cells = cell_data.index[np.argmin(distances, axis=1)]
     hcr_data[f"closet_cell_label"] = closest_cells
-    cell_data[f"{name}_count"] = np.bincount(closest_cells, minlength=len(cell_data))[
+    cell_data[f"{name}_count"] = np.bincount(closest_cells, minlength=len(cell_data)+1)[
         1:
     ]
     return hcr_data, cell_data
