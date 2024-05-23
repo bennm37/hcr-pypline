@@ -6,6 +6,7 @@ from .segmentation import (
     remove_external,
     project_to_cells,
     project_to_midline,
+    aggregate,
 )
 from .labelling import label, label_folder, load_labels
 from .core import get_path
