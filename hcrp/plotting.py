@@ -89,6 +89,17 @@ def plot_hcr(hcr_data, channel):
     ax[1].axis("off")
     return fig, ax
 
+def plot_hcr_midline(hcr_data, cell_data, n_bins=10):
+    hcr_hist, bins = np.histogram(hcr_data["spline_dist"], bins=n_bins)
+    cell_hist, bins = np.histogram(cell_data["spline_dist"], bins=n_bins)
+    assert np.all(np.logical_or(cell_hist > 0,hcr_hist==0)), "0 value in cell_hist, increase bin size"
+    bin_centers = (bins[:-1] + bins[1:]) / 2
+    normalized_hist = hcr_hist / cell_hist
+    fig, ax = plt.subplots()
+    ax.plot(bin_centers, normalized_hist, "-o", label="HCR")
+    return fig, ax
+
+
 
 def plot_cell_property(cell_data, channel, prop_name, f=None):
     fig, ax = plt.subplots()

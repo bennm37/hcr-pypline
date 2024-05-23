@@ -14,4 +14,5 @@ from .plotting import (
     plot_cell_property,
     plot_gradients,
     plot_hcr,
+    plot_hcr_midline,
 )

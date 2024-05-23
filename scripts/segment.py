@@ -26,7 +26,7 @@ if not os.path.exists(label_location):
 stack = imread(f"{folder}/{filename}")
 
 midline, contour, background, z_midline = load_labels(label_location, filename)
-z = z_midline - 1
+z = z_midline + 1
 masks, cell_data = get_cell_data(stack[z, :, :, 3], diameter=30, polygon=contour)
 cell_data = quantify_staining(stack[z, :, :, 2], masks, cell_data, name="pmad")
 brk_masks, brk_data = quantify_hcr(stack[z, :, :, 0], background["brk"], **brk_params)
@@ -35,7 +35,12 @@ dpp_masks, dpp_data = quantify_hcr(stack[z, :, :, 1], background["dpp"], **dpp_p
 dpp_data = remove_external(dpp_data, contour)
 brk_data, cell_data = project_to_cells(brk_data, cell_data, name="brk")
 dpp_data, cell_data = project_to_cells(dpp_data, cell_data, name="dpp")
-cell_data = project_to_midline(cell_data, midline, contour, mesoderm_cutoff=(50, 0))
+cell_data = project_to_midline(cell_data, midline, contour, mesoderm_cutoff=(50, 50))
+brk_data = project_to_midline(brk_data, midline, contour, mesoderm_cutoff=(50, 50))
+dpp_data = project_to_midline(brk_data, midline, contour, mesoderm_cutoff=(50, 50))
+
+
+plot_hcr_midline(brk_data, cell_data, bins=10)
 
 plot_hcr(brk_data, stack[z, :, :, 0])
 plot_hcr(dpp_data, stack[z, :, :, 1])
