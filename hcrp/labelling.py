@@ -240,6 +240,8 @@ def label(
 ):
     """Label a single image."""
     assert channel_names[-1] == "nuclear", "The last channel must be nuclear."
+    if not os.path.exists(out):
+       os.makedirs(out)
     stack = imread(stack_path)
     name = stack_path.split("/")[-1]
     mid_layer = int(mid_frac * stack.shape[0])

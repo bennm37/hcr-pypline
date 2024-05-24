@@ -53,16 +53,12 @@ def plot_gradients(channel_names, channel_types, data, pixel_to_mu=None, bin_siz
     return fig, ax
 
 def plot_layer_gradients(z_range, channel_names, channel_types, cell_data, pixel_to_mu=None, bin_size=50, err_type="std"):
-    fig, ax = plt.subplots(len(channel_names[:-1]), 1, sharex=True, sharey=True)
+    fig, ax = plt.subplots(len(channel_names[:-1]), 1, sharex=True)
     cmap = plt.get_cmap("viridis")
     norm = plt.Normalize(vmin=z_range.min(), vmax=z_range.max())
-    if pixel_to_mu is not None:
-        cell_data["spline_dist"] = cell_data["spline_dist"] * pixel_to_mu
-        bin_size *= pixel_to_mu
-        ax[-1].set_xlabel("Distance Along the Midline (um)")
-    else:
-        cell_data["spline_dist"] = cell_data["spline_dist"]
-        ax[-1].set_xlabel("Distance Along the Midline (px)")
+    ax[-1].set_xlabel("Distance Along the Midline (um)")
+    if pixel_to_mu is None:
+        raise ValueError
     for z in z_range:
         data = cell_data[cell_data["z"] == z]
         for i, (cname, ctype) in enumerate(zip(channel_names[:-1], channel_types[:-1])):
@@ -71,7 +67,7 @@ def plot_layer_gradients(z_range, channel_names, channel_types, cell_data, pixel
             if ctype == "hcr":
                 unit = "count"
                 bin_centers, c_mean, c_error = aggregate(
-                    data["spline_dist"], data[f"{cname}_{unit}"], bin_size, xmin=0, err_type=err_type
+                    data["spline_dist"] * pixel_to_mu, data[f"{cname}_{unit}"], bin_size*pixel_to_mu, xmin=0, err_type=err_type
                 )
                 ax[i].errorbar(
                     bin_centers,
@@ -87,7 +83,7 @@ def plot_layer_gradients(z_range, channel_names, channel_types, cell_data, pixel
             else:
                 unit = "mean_intensity"
                 bin_centers, c_mean, c_error = aggregate(
-                    data["spline_dist"], data[f"{cname}_{unit}"], bin_size, xmin=0
+                    data["spline_dist"] * pixel_to_mu, data[f"{cname}_{unit}"], bin_size*pixel_to_mu, xmin=0
                 )
                 ax[i].errorbar(
                     bin_centers,
