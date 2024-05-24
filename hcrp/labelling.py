@@ -116,6 +116,13 @@ def get_contour(stack, z, name):
     )
     return roi_points
 
+def get_endoderm(stack, z, name):
+    """Manually Select ROI midline Points for External Contour From Image."""
+    roi_points = get_midline(
+        stack, z, name, window_name=f"Manually input Endoderm Cutoff for {name}"
+    )
+    return roi_points
+
 
 def get_mean_region(image, high_contrast, name, size=50, vmax=None):
     """Allow the user to to select the location of a rectangular region of interest in an image and return the mean value of the region.
@@ -173,7 +180,7 @@ def get_mean_region(image, high_contrast, name, size=50, vmax=None):
 
 def get_z(stack, label_location, name, window_name=None, z=None):
     """Get the range of z values for a given stack."""
-    midline, contour, background, z_midline = load_labels(label_location, name)
+    midline, contour, background, z_midline, endoderm = load_labels(label_location, name)
     if z is None:
         z = z_midline
     image = stack[z]
@@ -229,6 +236,7 @@ def label(
     mid_frac=0.5,
     channel_names=["brk", "dpp", "pmad", "nuclear"],
     size=50,
+    background=False,
 ):
     """Label a single image."""
     assert channel_names[-1] == "nuclear", "The last channel must be nuclear."
@@ -242,6 +250,12 @@ def label(
     contour_df = pd.DataFrame(contour, columns=["x", "y", "z"])
     contour_df.to_csv(contour_out, index=False)
     print(f"Contour points saved to {contour_out}.")
+    endoderm = get_endoderm(stack[:, :, :, -1], mid_layer, name)
+    endoderm = np.hstack([endoderm])
+    endoderm_out = f"{out}/{name}_endoderm.csv"
+    endoderm_df = pd.DataFrame(endoderm, columns=["x", "y", "z"])
+    endoderm_df.to_csv(endoderm_out, index=False)
+    print(f"Endoderm points saved to {endoderm_out}.")
     midline = get_midline(stack[:, :, :, -1], contour[0, 2], name)
     midline_out = f"{out}/{name}_midline.csv"
     midline_df = pd.DataFrame(midline, columns=["x", "y", "z"])
@@ -249,22 +263,23 @@ def label(
     print(f"midline points saved to {out}/{name}_midline.csv.")
     background_out = f"{out}/{name}_background.csv"
     columns = ["mean_intensity", "window_length", "x", "y", "z"]
-    background_df = pd.DataFrame(columns=columns)
-    for j, channel_name in enumerate(channel_names[:-1]):
-        channel = stack[mid_layer, :, :, j]
-        normalized_channel = (channel // 256).astype(np.uint8)
-        normalized_channel = cv2.equalizeHist(normalized_channel)
-        background, background_center = get_mean_region(
-            channel, normalized_channel, f"{name} Background {channel_name}", size=size
-        )
-        background_df.loc[channel_name] = [
-            background,
-            size,
-            *background_center,
-            mid_layer,
-        ]
-    background_df.to_csv(background_out, index=True)
-    print(f"Backgound data saved to {background_out}.")
+    if background:
+        background_df = pd.DataFrame(columns=columns)
+        for j, channel_name in enumerate(channel_names[:-1]):
+            channel = stack[mid_layer, :, :, j]
+            normalized_channel = (channel // 256).astype(np.uint8)
+            normalized_channel = cv2.equalizeHist(normalized_channel)
+            background, background_center = get_mean_region(
+                channel, normalized_channel, f"{name} Background {channel_name}", size=size
+            )
+            background_df.loc[channel_name] = [
+                background,
+                size,
+                *background_center,
+                mid_layer,
+            ]
+        background_df.to_csv(background_out, index=True)
+        print(f"Backgound data saved to {background_out}.")
     print(f"Finished labelling {stack_path}.")
 
 
@@ -285,25 +300,32 @@ def label_folder(folder, mid_frac=0.5, channel_names=["brk", "dpp", "pMad", "nuc
     return data_out
 
 
-def load_labels(label_location, name):
+def load_labels(label_location, name, background=False, endoderm=True):
     """Load the labels for a given image."""
     midline_data = pd.read_csv(f"{label_location}/{name}_midline.csv")
     z = midline_data["z"].iloc[0]
     midline = np.array(midline_data[["x", "y"]])
     contour = np.array(pd.read_csv(f"{label_location}/{name}_contour.csv")[["x", "y"]])
-    background = pd.read_csv(f"{label_location}/{name}_background.csv", index_col=0)[
-        "mean_intensity"
-    ]
-    return midline, contour, background, z
+    if background:
+        background = pd.read_csv(f"{label_location}/{name}_background.csv", index_col=0)[
+            "mean_intensity"
+        ]
+    else:
+        background = None
+    if endoderm:
+        endoderm = np.array(pd.read_csv(f"{label_location}/{name}_endoderm.csv")[["x", "y"]])
+    else:
+        endoderm = None
+    return midline, contour, background, z, endoderm
 
-def load_labels_safe(folder, label_location, name):
+def load_labels_safe(folder, label_location, name, background=False, endoderm=True):
     """Load the labels for a given image. If they don't exist, prompt the user to label them."""
     try:
-        midline, contour, background, z = load_labels(label_location, name)
+        midline, contour, background, z, endoderm = load_labels(label_location, name, background, endoderm)
     except FileNotFoundError:
         if not os.path.exists(label_location):
             os.makedirs(label_location)
         print("Labels not found. Please label the image.")
         label(f"{folder}/{name}", label_location, mid_frac=0.5)
-        midline, contour, background, z = load_labels(label_location, name)
-    return midline, contour, background, z
+        midline, contour, background, z, endoderm = load_labels(label_location, name, background, endoderm)
+    return midline, contour, background, z, endoderm

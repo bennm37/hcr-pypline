@@ -24,7 +24,6 @@ def process_layer(
     channel_names=["brk", "dpp", "pmad", "nuclear"],
     channel_types=["hcr", "hcr", "staining", "nuclear"],
     hcr_params=None,
-    mesdoerm_cutoff=(50, 50),
     diameter=30,
     bf=True,
 ):
@@ -40,7 +39,7 @@ def process_layer(
         ), "HCR Params must match non-nuclear channels"
     stack = imread(f"{folder}/{filename}")
     name = filename.split(".")[0]
-    midline, contour, background, _ = load_labels_safe(folder, label_location, filename)
+    midline, contour, background, _, endoderm = load_labels_safe(folder, label_location, filename, endoderm=True)
     layer = stack[z]
     masks, cell_data = get_cell_data(layer[:, :, 3], diameter=diameter, polygon=contour)
     cell_data["z"] = z
@@ -58,12 +57,12 @@ def process_layer(
                 hcr_data[i], cell_data, name=cname
             )
             hcr_data[i] = project_to_midline(
-                hcr_data[i], midline, contour, mesoderm_cutoff=mesdoerm_cutoff
+                hcr_data[i], midline, contour, mesoderm_cutoff=endoderm
             )
         else:
             cell_data = quantify_staining(layer[:, :, 2], masks, cell_data, name=cname)
     cell_data = project_to_midline(
-        cell_data, midline, contour, mesoderm_cutoff=mesdoerm_cutoff
+        cell_data, midline, contour, mesoderm_cutoff=endoderm
     )
     if results_path is not None:
         if not os.path.exists(results_path):
@@ -135,7 +134,7 @@ def get_spline_points(midline, contour, n_points=1000):
 
 
 def project_to_midline(
-    cell_data, midline, contour, n_points=1000, mesoderm_cutoff=(50, 50)
+    cell_data, midline, contour, n_points=1000, mesoderm_cutoff=None
 ):
     spline_points, spline_dist = get_spline_points(midline, contour)
     centroids = cell_data[["x", "y"]].values
@@ -145,10 +144,15 @@ def project_to_midline(
     spline_dist = spline_dist - spline_dist[cell_spline_indices[distal_index]]
     cell_spline_dist = spline_dist[cell_spline_indices]
     cell_data["spline_dist"] = cell_spline_dist
-    cell_data["endoderm"] = np.logical_and(
-        cell_splines_offsets < mesoderm_cutoff[0], cell_spline_dist > mesoderm_cutoff[1]
-    )
-    cell_data["ectoderm"] = np.logical_not(cell_data["endoderm"])
+    if isinstance(mesoderm_cutoff, tuple):
+        cell_data["endoderm"] = np.logical_and(
+            cell_splines_offsets < mesoderm_cutoff[0], cell_spline_dist > mesoderm_cutoff[1]
+        )
+        cell_data["ectoderm"] = np.logical_not(cell_data["endoderm"])
+    elif isinstance(mesoderm_cutoff, np.ndarray):
+        inds = get_internal_indices(centroids, mesoderm_cutoff)
+        cell_data["endoderm"] = np.in1d(cell_data.index, cell_data.index[inds])
+        cell_data["ectoderm"] = np.logical_not(cell_data["endoderm"])
     return cell_data
 
 
