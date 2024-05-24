@@ -286,6 +286,7 @@ def label_folder(folder, mid_frac=0.5, channel_names=["brk", "dpp", "pMad", "nuc
 
 
 def load_labels(label_location, name):
+    """Load the labels for a given image."""
     midline_data = pd.read_csv(f"{label_location}/{name}_midline.csv")
     z = midline_data["z"].iloc[0]
     midline = np.array(midline_data[["x", "y"]])
@@ -293,4 +294,16 @@ def load_labels(label_location, name):
     background = pd.read_csv(f"{label_location}/{name}_background.csv", index_col=0)[
         "mean_intensity"
     ]
+    return midline, contour, background, z
+
+def load_labels_safe(folder, label_location, name):
+    """Load the labels for a given image. If they don't exist, prompt the user to label them."""
+    try:
+        midline, contour, background, z = load_labels(label_location, name)
+    except FileNotFoundError:
+        if not os.path.exists(label_location):
+            os.makedirs(label_location)
+        print("Labels not found. Please label the image.")
+        label(f"{folder}/{name}", label_location, mid_frac=0.5)
+        midline, contour, background, z = load_labels(label_location, name)
     return midline, contour, background, z

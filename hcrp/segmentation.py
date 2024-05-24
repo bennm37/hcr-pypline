@@ -7,11 +7,74 @@ from matplotlib.colors import LinearSegmentedColormap, Normalize
 from shapely.geometry import Point, Polygon
 from scipy.interpolate import splprep, splev
 from scipy.spatial.distance import cdist
-from hcrp import quantify_hcr, quantify_staining
-from hcrp.labelling import load_labels
+from hcrp import quantify_hcr, quantify_hcr_bf, quantify_staining, DEFAULT_HCR_PARAMS
+from hcrp.labelling import load_labels_safe
 import pandas as pd
 from collections import OrderedDict
 import cv2
+import os
+
+
+def process_layer(
+    z,
+    folder,
+    filename,
+    label_location,
+    results_path=None,
+    channel_names=["brk", "dpp", "pmad", "nuclear"],
+    channel_types=["hcr", "hcr", "staining", "nuclear"],
+    hcr_params=None,
+    mesdoerm_cutoff=(50, 50),
+    diameter=30,
+    bf=True,
+):
+    """This function takes in the path to a stack of images and the location of the midline, contour and background labels for the stack
+    and returns a pandas dataframe with the location of the segmented cells and the mean intensity or count of the number of mrnas in each cell.
+    It"""
+    assert channel_names[-1] == "nuclear", "Last channel must be nuclear"
+    if hcr_params is None:
+        hcr_params = [DEFAULT_HCR_PARAMS for _ in range(len(channel_names))]
+    else:
+        assert len(hcr_params) == len(
+            channel_names
+        ), "HCR Params must match non-nuclear channels"
+    stack = imread(f"{folder}/{filename}")
+    name = filename.split(".")[0]
+    midline, contour, background, _ = load_labels_safe(folder, label_location, filename)
+    layer = stack[z]
+    masks, cell_data = get_cell_data(layer[:, :, 3], diameter=diameter, polygon=contour)
+    cell_data["z"] = z
+    hcr_data = [None for _ in channel_names]
+    for i, (cname, ctype) in enumerate(zip(channel_names[:-1], channel_types[:-1])):
+        if ctype == "hcr":
+            if bf:
+                hcr_data[i] = quantify_hcr_bf(layer[:, :, i], threshold=hcr_params[i]["dot_intensity_thresh"])
+            else:
+                hcr_masks, hcr_data[i] = quantify_hcr(
+                    layer[:, :, 0], background[cname], **hcr_params[i]
+                )
+            hcr_data[i] = remove_external(hcr_data[i], contour)
+            hcr_data[i], cell_data = project_to_cells(
+                hcr_data[i], cell_data, name=cname
+            )
+            hcr_data[i] = project_to_midline(
+                hcr_data[i], midline, contour, mesoderm_cutoff=mesdoerm_cutoff
+            )
+        else:
+            cell_data = quantify_staining(layer[:, :, 2], masks, cell_data, name=cname)
+    cell_data = project_to_midline(
+        cell_data, midline, contour, mesoderm_cutoff=mesdoerm_cutoff
+    )
+    if results_path is not None:
+        if not os.path.exists(results_path):
+            os.makedirs(results_path)
+        cell_data.to_csv(f"{results_path}/{name}_cell_data_{z}.csv")
+        np.save(f"{results_path}/{name}_masks_{z}.npy", masks)
+        for i, cname in enumerate(channel_names[:-1]):
+            if hcr_data[i] is not None:
+                hcr_data[i].to_csv(f"{results_path}/{name}_{cname}_hcr_data_{z}.csv")
+        print(f"Saved results to {results_path}")
+    return masks, cell_data, hcr_data
 
 
 def get_random_cmap(n_colors):
@@ -95,13 +158,13 @@ def project_to_cells(hcr_data, cell_data, name):
     distances = cdist(hcr_hits, cell_centroids)
     closest_cells = cell_data.index[np.argmin(distances, axis=1)]
     hcr_data[f"closet_cell_label"] = closest_cells
-    cell_data[f"{name}_count"] = np.bincount(closest_cells, minlength=len(cell_data)+1)[
-        1:
-    ]
+    cell_data[f"{name}_count"] = np.bincount(
+        closest_cells, minlength=len(cell_data) + 1
+    )[1:]
     return hcr_data, cell_data
 
 
-def aggregate(x, y, bin_size, xmin=None, nan_value=np.nan):
+def aggregate(x, y, bin_size, xmin=None, nan_value=np.nan, err_type="std"):
     if xmin is None:
         xmin = np.min(x)
     bins = np.arange(xmin, np.max(x), bin_size)
@@ -118,21 +181,8 @@ def aggregate(x, y, bin_size, xmin=None, nan_value=np.nan):
         else:
             y_binned[i - 1] = np.mean(y_in_bin)
             y_err_binned[i - 1] = np.std(y_in_bin)
+    if err_type == "std_err":
+        y_err_binned = y_err_binned / np.sqrt(len(y_in_bin))
+    else:
+        y_err_binned = y_err_binned
     return bin_centers, y_binned, y_err_binned
-
-
-def segment(brk_params, dpp_params, stack, midline, contour, background, z):
-    masks, cell_data = get_cell_data(stack[z, :, :, 3], diameter=30, polygon=contour)
-    cell_data = quantify_staining(stack[z, :, :, 2], masks, cell_data, name="pmad")
-    brk_masks, brk_data = quantify_hcr(
-        stack[z, :, :, 0], background["brk"], **brk_params
-    )
-    brk_data = remove_external(brk_data, contour)
-    dpp_masks, dpp_data = quantify_hcr(
-        stack[z, :, :, 1], background["dpp"], **dpp_params
-    )
-    dpp_data = remove_external(dpp_data, contour)
-    brk_data, cell_data = project_to_cells(brk_data, cell_data, name="brk")
-    dpp_data, cell_data = project_to_cells(dpp_data, cell_data, name="dpp")
-    cell_data = project_to_midline(cell_data, midline, contour, mesoderm_cutoff=(50, 0))
-    return masks, cell_data, brk_data, dpp_data

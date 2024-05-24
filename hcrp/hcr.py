@@ -92,6 +92,32 @@ def quantify_hcr(
     return labels, centroids_post_decomposition
 
 
+def quantify_hcr_bf(image, voxel_size=(103, 103), spot_radius=(150, 150), threshold=None):
+    """Quantify the staining in the cells."""
+    spots, threshold = detection.detect_spots(
+        images=image,
+        threshold=threshold,
+        return_threshold=True,
+        voxel_size=voxel_size,  # in nanometer (one value per dimension zyx)
+        spot_radius=spot_radius,  # in nanometer (one value per dimension zyx)
+    )
+    centroids_post_decomposition, dense_regions, reference_spot = (
+        detection.decompose_dense(
+            image=image.astype(np.uint16),
+            spots=spots,
+            voxel_size=voxel_size,
+            spot_radius=spot_radius,
+            alpha=0.90,  # alpha impacts the number of spots per candidate region
+            beta=1,  # beta impacts the number of candidate regions to decompose
+            gamma=5,  # gamma the filtering step to denoise the image
+        )
+    )
+    centroids_post_decomposition = pd.DataFrame(
+        centroids_post_decomposition, columns=["x", "y"]
+    )
+    return centroids_post_decomposition
+
+
 def quantify_staining(image, masks, cell_data, name="staining"):
     """Quantify the staining in the cells."""
     intensities = []

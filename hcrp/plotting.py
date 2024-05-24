@@ -3,7 +3,7 @@ from hcrp.segmentation import aggregate, get_random_cmap
 import numpy as np
 
 
-def plot_gradients(channel_names, channel_types, data, pixel_to_mu=None, bin_size=50):
+def plot_gradients(channel_names, channel_types, data, pixel_to_mu=None, bin_size=50, err_type="std"):
     fig, ax = plt.subplots()
     ax1 = ax.twinx()
     colors = ["r", "g", "b", "k"]
@@ -20,7 +20,7 @@ def plot_gradients(channel_names, channel_types, data, pixel_to_mu=None, bin_siz
         if ctype == "hcr":
             unit = "count"
             bin_centers, c_mean, c_error = aggregate(
-                dist, data[f"{cname}_{unit}"], bin_size, xmin=0
+                dist, data[f"{cname}_{unit}"], bin_size, xmin=0, err_type=err_type
             )
             ax.errorbar(
                 bin_centers,
@@ -79,12 +79,12 @@ def plot_hcr_cell_projection(hcr_data, cell_data, masks, channel):
     return fig, ax
 
 
-def plot_hcr(hcr_data, channel):
+def plot_hcr(hcr_data, channel, n_std=3):
     fig, ax = plt.subplots(2, 1, sharex=True, sharey=True)
     r_cmap = get_random_cmap(hcr_data["closet_cell_label"].max())
-    ax[0].imshow(channel, cmap="afmhot", vmax=np.mean(channel) + 3 * np.std(channel))
+    ax[0].imshow(channel, cmap="afmhot", vmax=np.mean(channel) + n_std * np.std(channel))
     ax[0].axis("off")
-    ax[1].imshow(channel, cmap="afmhot", vmax=np.mean(channel) + 3 * np.std(channel))
+    ax[1].imshow(channel, cmap="afmhot", vmax=np.mean(channel) + n_std * np.std(channel))
     ax[1].scatter(hcr_data["y"], hcr_data["x"], s=2)
     ax[1].axis("off")
     return fig, ax
